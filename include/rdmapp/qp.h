@@ -127,7 +127,7 @@ public:
     std::shared_ptr<local_mr> local_mr_;
     std::exception_ptr exception_;
     struct ibv_wc wc_;
-    enum ibv_wr_opcode opcode_;
+    enum ibv_wr_opcode opcode [[maybe_unused]];
 
   public:
     recv_awaitable(std::shared_ptr<qp> qp, std::shared_ptr<local_mr> local_mr);
