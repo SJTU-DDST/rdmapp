@@ -1,0 +1,34 @@
+version: "3"
+
+vars:
+  BUILD: build
+
+tasks:
+  cmake:
+    desc: cmake
+    cmds:
+      - >
+        cmake -GNinja "-B{{.BUILD}}" 
+        -DCMAKE_CXX_COMPILER=clang++ 
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        .
+  clean:
+    desc: clean cmake build
+    cmds:
+      - rm -rf {{.BUILD}}
+  build:
+    desc: build with cmake --build
+    cmds:
+      - cmake --build "{{.BUILD}}"
+  all:
+    desc: cmake and build all targets
+    deps:
+      - cmake
+    cmds:
+      - task build
+  fmt:
+    desc: format all source files
+    cmds:
+      - >
+        find . -iname '*.h' -o -iname '*.cc' -o -iname '*.hpp' |
+        clang-format --style=file -i --files=/dev/stdin
