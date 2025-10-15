@@ -25,14 +25,14 @@ if (RDMAPP_BUILD_DOCS)
   # check if Doxygen is installed
   find_package(Doxygen)
   if (DOXYGEN_FOUND)
-      # set input and output files
-      set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+    # set input and output files
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 
-      # request to configure the file
-      message("Doxygen build started")
+    # request to configure the file
+    message("Doxygen build started")
 
-      # note the option ALL which allows to build the docs together with the application
-      add_custom_target( doc_doxygen ALL
+    # note the option ALL which allows to build the docs together with the application
+    add_custom_target( doc_doxygen ALL
           COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           COMMENT "Generating API documentation with Doxygen"
@@ -60,17 +60,15 @@ add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 list(APPEND
   RDMAPP_COMPILE_OPTIONS
   PUBLIC
-  -flto
   PRIVATE
   -fno-rtti
-  -Wall 
-  -Wextra 
+  -Wall
+  -Wextra
   -pedantic
 )
 list(APPEND
   RDMAPP_LINK_OPTIONS
   PUBLIC
-  -flto
   PRIVATE
   -fno-rtti
 )
@@ -80,11 +78,6 @@ if (RDMAPP_ASAN)
 endif ()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES Clang)
-  list(APPEND RDMAPP_LINK_LIBRARIES c++)
-  list(APPEND RDMAPP_COMPILE_OPTIONS
-    PUBLIC
-    -stdlib=libc++
-  )
   if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "17")
     list(APPEND RDMAPP_COMPILE_OPTIONS
       PUBLIC
@@ -92,7 +85,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES Clang)
     )
   endif ()
 elseif (CMAKE_CXX_COMPILER_ID MATCHES GNU)
-  if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11") 
+  if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
     list(APPEND RDMAPP_COMPILE_OPTIONS
       PUBLIC
       -fcoroutines
@@ -112,7 +105,7 @@ if (iwyu_path)
 endif ()
 
 if (RDMAPP_BUILD_EXAMPLES)
-  set(RDMAPP_EXAMPLES_LIB_SOURCE_FILES 
+  set(RDMAPP_EXAMPLES_LIB_SOURCE_FILES
     examples/socket/event_loop.cc
     examples/socket/channel.cc
     examples/socket/tcp_connection.cc
