@@ -48,7 +48,8 @@ struct deserialized_qp {
  *
  */
 class qp : public noncopyable, public std::enable_shared_from_this<qp> {
-  static std::atomic<uint32_t> next_sq_psn;
+  // each qp holds its own sq_psn;
+  std::atomic<uint32_t> next_sq_psn;
   struct ibv_qp *qp_;
   struct ibv_srq *raw_srq_;
   uint32_t sq_psn_;
