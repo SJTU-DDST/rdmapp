@@ -57,6 +57,9 @@ set(RDMAPP_LINK_LIBRARIES ibverbs Threads::Threads)
 
 add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 
+target_include_directories(rdmapp PUBLIC ${ASIO_INCLUDE})
+message("-- Find asio: ${ASIO_INCLUDE}")
+
 list(APPEND
   RDMAPP_COMPILE_OPTIONS
   PUBLIC
