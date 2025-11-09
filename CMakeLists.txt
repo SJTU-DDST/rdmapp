@@ -66,11 +66,15 @@ list(APPEND
   -Wall
   -Wextra
   -pedantic
+  -fno-rtti
+  -DASIO_NO_TYPEID
 )
 list(APPEND
   RDMAPP_LINK_OPTIONS
   PUBLIC
   PRIVATE
+  -fno-rtti
+  -DASIO_NO_TYPEID
 )
 if (RDMAPP_ASAN)
   list(APPEND RDMAPP_COMPILE_OPTIONS PRIVATE -fno-omit-frame-pointer -fsanitize=address)
@@ -93,8 +97,7 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES GNU)
   endif ()
 endif ()
 
-target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
-target_link_options(rdmapp ${RDMAPP_LINK_OPTIONS})
+target_compile_options(rdmapp PRIVATE ${RDMAPP_COMPILE_OPTIONS})
 target_link_libraries(rdmapp PUBLIC ${RDMAPP_LINK_LIBRARIES})
 target_link_libraries(rdmapp PRIVATE fmt spdlog)
 target_include_directories(rdmapp PUBLIC include)
@@ -112,9 +115,13 @@ if (RDMAPP_BUILD_EXAMPLES)
     examples/socket/channel.cc
     examples/socket/tcp_connection.cc
     examples/socket/tcp_listener.cc
+    examples/socket/listener.cc
     examples/acceptor.cc
     examples/connector.cc
     examples/qp_transmission.cc
+    examples/qp_acceptor.cc
+    examples/qp_connector.cc
+    examples/qp_connector.cc
   )
   add_library(rdmapp_examples STATIC ${RDMAPP_EXAMPLES_LIB_SOURCE_FILES})
   target_compile_options(rdmapp_examples ${RDMAPP_COMPILE_OPTIONS})

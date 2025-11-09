@@ -62,12 +62,11 @@ rdmapp::task<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
 }
 
 void serve(std::shared_ptr<rdmapp::listener> l,
-           std::unique_ptr<rdmapp::qp_acceptor> acc) {
-  auto f = [acc = std::move(acc)](
-               asio::ip::tcp::socket socket) -> asio::awaitable<void> {
+           std::shared_ptr<rdmapp::qp_acceptor> acc) {
+  auto f = [acc](asio::ip::tcp::socket socket) -> asio::awaitable<void> {
     auto qp = co_await acc->accept(std::move(socket));
   };
-  l->bind_listener(f);
+  l->bind_listener(std::move(f));
 }
 
 rdmapp::task<void> server(rdmapp::acceptor &acceptor) {
