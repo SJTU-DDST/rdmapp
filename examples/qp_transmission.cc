@@ -13,18 +13,6 @@
 
 namespace rdmapp {
 
-asio::awaitable<std::shared_ptr<rdmapp::qp>>
-from_socket(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<rdmapp::cq> cq,
-            asio::ip::tcp::socket &&socket) {
-  auto remote_qp = co_await recv_qp(socket);
-  auto local_qp = std::make_shared<rdmapp::qp>(
-      remote_qp.header.lid, remote_qp.header.qp_num, remote_qp.header.sq_psn,
-      remote_qp.header.gid, pd, cq, cq);
-  local_qp->user_data() = std::move(remote_qp.user_data);
-  co_await send_qp(*local_qp, socket);
-  co_return local_qp;
-}
-
 asio::awaitable<void> send_qp(rdmapp::qp const &qp,
                               asio::ip::tcp::socket &socket) {
   auto local_qp_data = qp.serialize();
