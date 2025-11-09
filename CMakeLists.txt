@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
 project(rdmapp)
 set(CMAKE_CXX_STANDARD 20)
 
+include(cmake/deps.cmake)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(Threads REQUIRED)
 find_package(ibverbs REQUIRED)
@@ -57,9 +59,6 @@ set(RDMAPP_LINK_LIBRARIES ibverbs Threads::Threads)
 
 add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 
-target_include_directories(rdmapp PUBLIC ${ASIO_INCLUDE})
-message("-- Find asio: ${ASIO_INCLUDE}")
-
 list(APPEND
   RDMAPP_COMPILE_OPTIONS
   PUBLIC
@@ -96,8 +95,10 @@ endif ()
 
 target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
 target_link_options(rdmapp ${RDMAPP_LINK_OPTIONS})
-target_link_libraries(rdmapp ${RDMAPP_LINK_LIBRARIES})
+target_link_libraries(rdmapp PUBLIC ${RDMAPP_LINK_LIBRARIES})
+target_link_libraries(rdmapp PRIVATE fmt spdlog)
 target_include_directories(rdmapp PUBLIC include)
+target_include_directories(rdmapp PUBLIC ${ASIO_INCLUDE})
 
 find_program(iwyu_path NAMES include-what-you-use iwyu)
 if (iwyu_path)
