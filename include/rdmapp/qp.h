@@ -1,11 +1,13 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
 #include <atomic>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -13,6 +15,7 @@
 
 #include "rdmapp/cq.h"
 #include "rdmapp/device.h"
+#include "rdmapp/mr.h"
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"
 
@@ -77,7 +80,11 @@ class qp : public noncopyable, public std::enable_shared_from_this<qp> {
   void destroy();
 
 public:
+  // TODO: maybe use send_result in the future
+  using send_result = uint32_t;
+
   class send_awaitable {
+    friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
     std::exception_ptr exception_;
@@ -88,6 +95,8 @@ public:
     struct ibv_wc wc_;
     const enum ibv_wr_opcode opcode_;
 
+    [[nodiscard]] asio::awaitable<send_result> asio_awaitable();
+
   public:
     send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
                    enum ibv_wr_opcode opcode);
@@ -115,6 +124,30 @@ public:
     send_awaitable(std::shared_ptr<qp> qp, std::shared_ptr<local_mr> local_mr,
                    enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
                    uint64_t compare, uint64_t swap);
+
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const>,
+                   enum ibv_wr_opcode opcode); // send
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
+                   enum ibv_wr_opcode opcode,
+                   remote_mr const &remote_mr); // read
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const>,
+                   enum ibv_wr_opcode opcode,
+                   remote_mr const &remote_mr); // write
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const>,
+                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
+                   uint32_t imm); // write with imm
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte>,
+                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
+                   uint64_t add); // fetch and add
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte>,
+                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
+                   uint64_t compare, uint64_t swap); // cas
+
+    // NOTE: support asio::async_compose for asio::awaitable
+    // how to use: https://github.com/chriskohlhoff/asio/issues/795
+    void suspend(auto &&self);
+    send_result resume() const;
+
     bool await_ready() const noexcept;
     bool await_suspend(std::coroutine_handle<> h) noexcept;
     uint32_t await_resume() const;
@@ -122,19 +155,28 @@ public:
     constexpr bool is_atomic() const;
   };
 
+  using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
   class recv_awaitable {
+    friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
     std::exception_ptr exception_;
     struct ibv_wc wc_;
     enum ibv_wr_opcode opcode [[maybe_unused]];
 
+    [[nodiscard]] asio::awaitable<recv_result> asio_awaitable();
+
   public:
     recv_awaitable(std::shared_ptr<qp> qp, std::shared_ptr<local_mr> local_mr);
     recv_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length);
+    recv_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer);
+
+    void suspend(auto &&self);
+    recv_result resume() const;
+
     bool await_ready() const noexcept;
     bool await_suspend(std::coroutine_handle<> h) noexcept;
-    std::pair<uint32_t, std::optional<uint32_t>> await_resume() const;
+    recv_result await_resume() const;
   };
 
   /**
@@ -231,6 +273,9 @@ public:
    */
   [[nodiscard]] send_awaitable send(void *buffer, size_t length);
 
+  [[nodiscard]] asio::awaitable<send_result>
+  send(std::span<std::byte const> buffer);
+
   /**
    * @brief This method writes local buffer to a remote memory region. The local
    * buffer will be registered as a memory region first and then deregistered
@@ -244,13 +289,17 @@ public:
   [[nodiscard]] send_awaitable write(remote_mr const &remote_mr, void *buffer,
                                      size_t length);
 
+  [[nodiscard]] asio::awaitable<send_result>
+  write(remote_mr const &remote_mr, std::span<std::byte const> buffer);
+
   /**
    * @brief This method writes local buffer to a remote memory region with an
    * immediate value. The local buffer will be registered as a memory region
    * first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @param buffer Pointer to local buffer. It should be valid until
+   * completion.
    * @param length The length of the local buffer.
    * @param imm The immediate value.
    * @return send_awaitable A coroutine returning length of the data written.
@@ -259,26 +308,35 @@ public:
                                               void *buffer, size_t length,
                                               uint32_t imm);
 
+  [[nodiscard]] asio::awaitable<send_result>
+  write_with_imm(remote_mr const &remote_mr, std::span<std::byte const> buffer,
+                 uint32_t imm);
+
   /**
    * @brief This method reads to local buffer from a remote memory region. The
    * local buffer will be registered as a memory region first and then
    * deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @param buffer Pointer to local buffer. It should be valid until
+   * completion.
    * @param length The length of the local buffer.
    * @return send_awaitable A coroutine returning length of the data read.
    */
   [[nodiscard]] send_awaitable read(remote_mr const &remote_mr, void *buffer,
                                     size_t length);
 
+  [[nodiscard]] asio::awaitable<send_result> read(remote_mr const &remote_mr,
+                                                  std::span<std::byte> buffer);
+
   /**
    * @brief This method performs an atomic fetch-and-add operation on the
-   * given remote memory region. The local buffer will be registered as a memory
-   * region first and then deregistered upon completion.
+   * given remote memory region. The local buffer will be registered as a
+   * memory region first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @param buffer Pointer to local buffer. It should be valid until
+   * completion.
    * @param length The length of the local buffer.
    * @param add The delta.
    * @return send_awaitable A coroutine returning length of the data sent.
@@ -287,13 +345,18 @@ public:
                                              void *buffer, size_t length,
                                              uint64_t add);
 
+  [[nodiscard]] asio::awaitable<send_result>
+  fetch_and_add(remote_mr const &remote_mr, std::span<std::byte> buffer,
+                uint64_t add);
+
   /**
    * @brief This method performs an atomic compare-and-swap operation on the
-   * given remote memory region. The local buffer will be registered as a memory
-   * region first and then deregistered upon completion.
+   * given remote memory region. The local buffer will be registered as a
+   * memory region first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @param buffer Pointer to local buffer. It should be valid until
+   * completion.
    * @param length The length of the local buffer.
    * @param compare The expected old value.
    * @param swap The desired new value.
@@ -304,17 +367,24 @@ public:
                                                 uint64_t compare,
                                                 uint64_t swap);
 
+  [[nodiscard]] asio::awaitable<send_result>
+  compare_and_swap(remote_mr const &remote_mr, std::span<std::byte> buffer,
+                   uint64_t compare, uint64_t swap);
+
   /**
-   * @brief This method posts a recv request on the queue pair. The buffer will
-   * be filled with data received. The local buffer will be registered as a
-   * memory region first and then deregistered upon completion.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @brief This method posts a recv request on the queue pair. The buffer
+   * will be filled with data received. The local buffer will be registered as
+   * a memory region first and then deregistered upon completion.
+   * @param buffer Pointer to local buffer. It should be valid until
+   * completion.
    * @param length The length of the local buffer.
    * @return recv_awaitable A coroutine returning std::pair<uint32_t,
    * std::optional<uint32_t>>, with first indicating the length of received
    * data, and second indicating the immediate value if any.
    */
   [[nodiscard]] recv_awaitable recv(void *buffer, size_t length);
+
+  [[nodiscard]] asio::awaitable<recv_result> recv(std::span<std::byte> buffer);
 
   /**
    * @brief This function sends a registered local memory region to remote.
@@ -323,7 +393,10 @@ public:
    * controlled by a smart pointer.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
-  [[nodiscard]] send_awaitable send(std::shared_ptr<local_mr> local_mr);
+  [[nodiscard]] send_awaitable async_send(std::shared_ptr<local_mr> local_mr);
+
+  [[nodiscard]] asio::awaitable<send_result>
+  send(std::shared_ptr<local_mr> local_mr);
 
   /**
    * @brief This function writes a registered local memory region to remote.
@@ -333,12 +406,15 @@ public:
    * controlled by a smart pointer.
    * @return send_awaitable A coroutine returning length of the data written.
    */
-  [[nodiscard]] send_awaitable write(remote_mr const &remote_mr,
-                                     std::shared_ptr<local_mr> local_mr);
+  [[nodiscard]] send_awaitable async_write(remote_mr const &remote_mr,
+                                           std::shared_ptr<local_mr> local_mr);
+
+  [[nodiscard]] asio::awaitable<send_result>
+  write(remote_mr const &remote_mr, std::shared_ptr<local_mr> local_mr);
 
   /**
-   * @brief This function writes a registered local memory region to remote with
-   * an immediate value.
+   * @brief This function writes a registered local memory region to remote
+   * with an immediate value.
    *
    * @param remote_mr Remote memory region handle.
    * @param local_mr Registered local memory region, whose lifetime is
@@ -347,6 +423,10 @@ public:
    * @return send_awaitable A coroutine returning length of the data sent.
    */
   [[nodiscard]] send_awaitable
+  async_write_with_imm(remote_mr const &remote_mr,
+                       std::shared_ptr<local_mr> local_mr, uint32_t imm);
+
+  [[nodiscard]] asio::awaitable<send_result>
   write_with_imm(remote_mr const &remote_mr, std::shared_ptr<local_mr> local_mr,
                  uint32_t imm);
 
@@ -358,8 +438,11 @@ public:
    * controlled by a smart pointer.
    * @return send_awaitable A coroutine returning length of the data read.
    */
-  [[nodiscard]] send_awaitable read(remote_mr const &remote_mr,
-                                    std::shared_ptr<local_mr> local_mr);
+  [[nodiscard]] send_awaitable async_read(remote_mr const &remote_mr,
+                                          std::shared_ptr<local_mr> local_mr);
+
+  [[nodiscard]] asio::awaitable<send_result>
+  read(remote_mr const &remote_mr, std::shared_ptr<local_mr> local_mr);
 
   /**
    * @brief This function performs an atomic fetch-and-add operation on the
@@ -371,9 +454,13 @@ public:
    * @param add The delta.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
-  [[nodiscard]] send_awaitable fetch_and_add(remote_mr const &remote_mr,
-                                             std::shared_ptr<local_mr> local_mr,
-                                             uint64_t add);
+  [[nodiscard]] send_awaitable
+  async_fetch_and_add(remote_mr const &remote_mr,
+                      std::shared_ptr<local_mr> local_mr, uint64_t add);
+
+  [[nodiscard]] asio::awaitable<send_result>
+  fetch_and_add(remote_mr const &remote_mr, std::shared_ptr<local_mr> local_mr,
+                uint64_t add);
 
   /**
    * @brief This function performs an atomic compare-and-swap operation on the
@@ -387,6 +474,11 @@ public:
    * @return send_awaitable A coroutine returning length of the data sent.
    */
   [[nodiscard]] send_awaitable
+  async_compare_and_swap(remote_mr const &remote_mr,
+                         std::shared_ptr<local_mr> local_mr, uint64_t compare,
+                         uint64_t swap);
+
+  [[nodiscard]] asio::awaitable<send_result>
   compare_and_swap(remote_mr const &remote_mr,
                    std::shared_ptr<local_mr> local_mr, uint64_t compare,
                    uint64_t swap);
@@ -401,7 +493,10 @@ public:
    * std::optional<uint32_t>>, with first indicating the length of received
    * data, and second indicating the immediate value if any.
    */
-  [[nodiscard]] recv_awaitable recv(std::shared_ptr<local_mr> local_mr);
+  [[nodiscard]] recv_awaitable async_recv(std::shared_ptr<local_mr> local_mr);
+
+  [[nodiscard]] asio::awaitable<recv_result>
+  recv(std::shared_ptr<local_mr> local_mr);
 
   /**
    * @brief This function serializes a Queue Pair prepared to be sent to a
@@ -420,8 +515,8 @@ public:
   std::vector<uint8_t> &user_data();
 
   /**
-   * @brief This function provides access to the Protection Domain of the Queue
-   * Pair.
+   * @brief This function provides access to the Protection Domain of the
+   * Queue Pair.
    *
    * @return std::shared_ptr<pd> Pointer to the PD.
    */

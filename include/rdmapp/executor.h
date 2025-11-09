@@ -2,6 +2,7 @@
 
 #include <asio/io_context.hpp>
 #include <functional>
+#include <iterator>
 
 #include <infiniband/verbs.h>
 
