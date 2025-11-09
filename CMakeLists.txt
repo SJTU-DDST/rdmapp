@@ -64,7 +64,6 @@ list(APPEND
   RDMAPP_COMPILE_OPTIONS
   PUBLIC
   PRIVATE
-  -fno-rtti
   -Wall
   -Wextra
   -pedantic
@@ -73,7 +72,6 @@ list(APPEND
   RDMAPP_LINK_OPTIONS
   PUBLIC
   PRIVATE
-  -fno-rtti
 )
 if (RDMAPP_ASAN)
   list(APPEND RDMAPP_COMPILE_OPTIONS PRIVATE -fno-omit-frame-pointer -fsanitize=address)

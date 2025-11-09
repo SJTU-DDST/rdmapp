@@ -10,7 +10,10 @@
 #include <string>
 #include <thread>
 
+#include "rdmapp/executor.h"
 #include <rdmapp/rdmapp.h>
+
+#include "rdmapp/detail/debug.h"
 
 using namespace std::literals::chrono_literals;
 
@@ -110,7 +113,15 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq);
+  auto io_ctx = std::make_shared<asio::io_context>(4);
+  auto work_guard = asio::make_work_guard(*io_ctx);
+  std::jthread _([&io_ctx]() {
+    RDMAPP_LOG_DEBUG("io_context is running");
+    io_ctx->run();
+    RDMAPP_LOG_DEBUG("io_context exited");
+  });
+  auto executor = std::make_shared<rdmapp::executor>(io_ctx);
+  auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
   auto loop = rdmapp::socket::event_loop::new_loop();
   auto looper = std::thread([loop]() { loop->loop(); });
   if (argc == 2) {
@@ -125,5 +136,6 @@ int main(int argc, char *argv[]) {
   }
   loop->close();
   looper.join();
+  io_ctx->stop();
   return 0;
 }

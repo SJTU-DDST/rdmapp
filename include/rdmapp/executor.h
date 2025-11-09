@@ -1,12 +1,9 @@
 #pragma once
 
+#include <asio/io_context.hpp>
 #include <functional>
-#include <thread>
-#include <vector>
 
 #include <infiniband/verbs.h>
-
-#include "rdmapp/detail/blocking_queue.h"
 
 namespace rdmapp {
 
@@ -15,13 +12,9 @@ namespace rdmapp {
  *
  */
 class executor {
-  using work_queue = detail::blocking_queue<struct ibv_wc>;
-  std::vector<std::thread> workers_;
-  work_queue work_queue_;
-  void worker_fn(size_t worker_id);
+  std::shared_ptr<asio::io_context> io_ctx_;
 
 public:
-  using queue_closed_error = work_queue::queue_closed_error;
   using callback_fn = std::function<void(struct ibv_wc const &wc)>;
   using callback_ptr = callback_fn *;
 
@@ -30,7 +23,7 @@ public:
    *
    * @param nr_worker The number of worker threads to use.
    */
-  executor(size_t nr_worker = 4);
+  executor(std::shared_ptr<asio::io_context> io_context);
 
   /**
    * @brief Process a completion entry.

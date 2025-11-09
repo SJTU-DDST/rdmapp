@@ -69,7 +69,11 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq);
+  auto io_ctx = std::make_shared<asio::io_context>(4);
+  auto work_guard = asio::make_work_guard(*io_ctx);
+  std::jthread _([&io_ctx]() { io_ctx->run(); });
+  auto executor = std::make_shared<rdmapp::executor>(io_ctx);
+  auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
   auto loop = rdmapp::socket::event_loop::new_loop();
   auto looper = std::thread([loop]() { loop->loop(); });
   auto reporter = std::thread([&]() {
@@ -88,8 +92,10 @@ int main(int argc, char *argv[]) {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
               << " [server_ip] [port] for client" << std::endl;
   }
+  io_ctx->stop();
   loop->close();
   looper.join();
   reporter.join();
+  io_ctx->stop();
   return 0;
 }
