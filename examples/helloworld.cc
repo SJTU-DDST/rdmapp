@@ -1,6 +1,9 @@
 #include "acceptor.h"
 #include "connector.h"
+#include "listener.h"
+#include "qp_acceptor.h"
 #include <algorithm>
+#include <asio/awaitable.hpp>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -56,6 +59,15 @@ rdmapp::task<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   std::cout << "Compared and swapped by client: " << counter << std::endl;
 
   co_return;
+}
+
+void serve(std::shared_ptr<rdmapp::listener> l,
+           std::unique_ptr<rdmapp::qp_acceptor> acc) {
+  auto f = [acc = std::move(acc)](
+               asio::ip::tcp::socket socket) -> asio::awaitable<void> {
+    auto qp = co_await acc->accept(std::move(socket));
+  };
+  l->bind_listener(f);
 }
 
 rdmapp::task<void> server(rdmapp::acceptor &acceptor) {
