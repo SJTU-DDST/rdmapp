@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdexcept>
 #include <stop_token>
+#include <thread>
 
 #include <infiniband/verbs.h>
 
@@ -23,6 +24,8 @@ void cq_poller::worker(std::stop_token token) {
   while (!token.stop_requested()) {
     try {
       auto nr_wc = cq_->poll(wc_vec_);
+      if (nr_wc == 0)
+        std::this_thread::yield();
       for (size_t i = 0; i < nr_wc; ++i) {
         auto &wc = wc_vec_[i];
         RDMAPP_LOG_TRACE("polled cqe wr_id=%p status=%d",
