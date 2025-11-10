@@ -478,15 +478,18 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
         // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
         std::weak_ptr<send_awaitable> awaitable_local = awaitable;
 
-        auto callback_fn = [self_ptr =
-                                std::make_shared<std::decay_t<decltype(self)>>(
-                                    std::move(self)),
-                            awaitable](struct ibv_wc const &wc) mutable {
-          spdlog::debug("recv_awaitable start resume");
-          spdlog::debug("awaitable in resume: {}", awaitable.use_count());
-          awaitable->wc_ = wc;
-          self_ptr->complete(awaitable->resume());
-        };
+        auto callback_fn =
+            [
+                // NOTE: 注意之类的捕获顺序,
+                // 如果先捕获self那就awaitable就完蛋了被move走了
+                awaitable = awaitable_local.lock(),
+                self_ptr = std::make_shared<std::decay_t<decltype(self)>>(
+                    std::move(self))](struct ibv_wc const &wc) mutable {
+              spdlog::debug("send_awaitable start resume");
+              spdlog::debug("awaitable in resume: {}", awaitable.use_count());
+              awaitable->wc_ = wc;
+              self_ptr->complete(awaitable->resume());
+            };
 
         spdlog::debug("check in lambda: awaitable_local: {}",
                       awaitable_local.use_count());
@@ -517,11 +520,14 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
         std::weak_ptr<recv_awaitable> awaitable_local = awaitable;
 
         auto callback = executor::make_callback(
-            [self_ptr = std::make_shared<std::decay_t<decltype(self)>>(
-                 std::move(self)),
-             awaitable](struct ibv_wc const &wc) mutable {
+            // NOTE: 注意之类的捕获顺序,
+            // 如果先捕获self那就awaitable就完蛋了被move走了
+            [awaitable = awaitable_local.lock(),
+             self_ptr = std::make_shared<std::decay_t<decltype(self)>>(
+                 std::move(self))](struct ibv_wc const &wc) mutable {
+              spdlog::debug("recv_awaitable start resume");
+              spdlog::debug("awaitable in resume: {}", awaitable.use_count());
               awaitable->wc_ = wc;
-              spdlog::debug("recv_awaitable will resume");
               self_ptr->complete(awaitable->resume());
             });
 
@@ -750,6 +756,7 @@ void qp::recv_awaitable::suspend(executor::callback_ptr callback) {
     qp_->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
+    spdlog::debug("destroy callback on error: {}", fmt::ptr(callback));
     executor::destroy_callback(callback);
   }
 }
@@ -773,6 +780,7 @@ bool qp::recv_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
     qp_->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
+    spdlog::debug("destroy callback on error: {}", fmt::ptr(callback));
     executor::destroy_callback(callback);
     return false;
   }
