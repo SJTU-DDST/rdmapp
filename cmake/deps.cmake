@@ -3,12 +3,6 @@ include(FetchContent)
 message("-- Find asio: ${ASIO_INCLUDE}")
 
 fetchcontent_declare(
-  rdmapp
-  GIT_REPOSITORY git@github.com:SJTU-DDST/rdmapp.git
-  GIT_TAG master
-)
-
-fetchcontent_declare(
   spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
   GIT_TAG v1.16.0
