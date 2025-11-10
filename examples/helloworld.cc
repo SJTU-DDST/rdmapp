@@ -79,6 +79,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   buffer.resize(msg.size());
   auto recv_buffer = std::as_writable_bytes(std::span(buffer));
 
+  spdlog::info("waiting for bytes sent");
   /* Send/Recv */
   auto [n, _] = co_await qp->recv(recv_buffer);
   std::cout << "Received " << n << " bytes from server: " << buffer
@@ -154,10 +155,12 @@ int main(int argc, char *argv[]) {
   }
 
   case 3: {
+    auto work_guard = asio::make_work_guard(*io_ctx);
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
     asio::co_spawn(*io_ctx, client(connector), asio::detached);
     io_ctx->run();
+    spdlog::info("client exit");
     break;
   }
 

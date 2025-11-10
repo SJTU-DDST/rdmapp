@@ -17,6 +17,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <optional>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <strings.h>
 #include <sys/socket.h>
@@ -443,8 +444,11 @@ qp::send_result qp::send_awaitable::resume() const {
 uint32_t qp::send_awaitable::await_resume() const { return resume(); }
 
 asio::awaitable<qp::recv_result> qp::recv_awaitable::asio_awaitable() {
+  spdlog::debug("creating recv asio_awaitable");
   auto fn = [awaitable = this->shared_from_this()](auto &&self) mutable {
+    spdlog::debug("recv_awaitable: fn start");
     awaitable->suspend(std::move(self));
+    spdlog::debug("recv_awaitable: suspended");
   };
   return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
       std::move(fn), asio::use_awaitable);
@@ -659,6 +663,7 @@ void qp::recv_awaitable::suspend(auto &&self) {
       [self = std::make_shared<std::decay_t<decltype(self)>>(std::move(self)),
        this](struct ibv_wc const &wc) mutable {
         wc_ = wc;
+        spdlog::debug("recv_awaitable will resume");
         self->complete(this->resume());
       };
   auto callback = executor::make_callback(std::move(callback_fn));

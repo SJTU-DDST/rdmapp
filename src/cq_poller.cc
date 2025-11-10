@@ -1,6 +1,7 @@
 #include "rdmapp/cq_poller.h"
 
 #include <memory>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <stop_token>
 #include <thread>
@@ -21,6 +22,7 @@ cq_poller::cq_poller(std::shared_ptr<cq> cq, std::shared_ptr<executor> executor,
 cq_poller::~cq_poller() {}
 
 void cq_poller::worker(std::stop_token token) {
+  spdlog::debug("polling cqe");
   while (!token.stop_requested()) {
     try {
       auto nr_wc = cq_->poll(wc_vec_);
