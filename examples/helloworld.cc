@@ -118,14 +118,15 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
             << " length=" << counter_mr.length()
             << " rkey=" << counter_mr.rkey() << " from server" << std::endl;
   uint64_t counter = 0;
-  auto cnt_buffer =
-      std::as_writable_bytes(std::span(&counter, sizeof(counter)));
+  auto cnt_buffer = std::as_writable_bytes(std::span(&counter, 1));
+  spdlog::debug("local cnt buffer: size={}", cnt_buffer.size());
   co_await qp->fetch_and_add(counter_mr, cnt_buffer, 1);
   std::cout << "Fetched and added from server: " << counter << std::endl;
-  co_await qp->write_with_imm(remote_mr, cnt_buffer, 1);
+  co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
+  spdlog::info("written with imm: buffer={} imm={}", counter, 1);
   co_await qp->compare_and_swap(counter_mr, cnt_buffer, 43, 4422);
   std::cout << "Compared and swapped from server: " << counter << std::endl;
-  co_await qp->write_with_imm(remote_mr, cnt_buffer, 1);
+  co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
 
   co_return;
 }
