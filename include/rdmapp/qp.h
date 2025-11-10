@@ -95,8 +95,6 @@ public:
     struct ibv_wc wc_;
     const enum ibv_wr_opcode opcode_;
 
-    [[nodiscard]] asio::awaitable<send_result> asio_awaitable();
-
   public:
     send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
                    enum ibv_wr_opcode opcode);
@@ -156,16 +154,17 @@ public:
     constexpr bool is_atomic() const;
   };
 
+  [[nodiscard]] asio::awaitable<send_result>
+  make_asio_awaitable(send_awaitable &&awaitable);
+
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
-  class recv_awaitable : public std::enable_shared_from_this<recv_awaitable> {
+  class recv_awaitable {
     friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
     std::exception_ptr exception_;
     struct ibv_wc wc_;
     enum ibv_wr_opcode opcode [[maybe_unused]];
-
-    [[nodiscard]] asio::awaitable<recv_result> asio_awaitable();
 
   public:
     recv_awaitable(std::shared_ptr<qp> qp, std::shared_ptr<local_mr> local_mr);
@@ -180,6 +179,8 @@ public:
     recv_result await_resume() const;
   };
 
+  [[nodiscard]] asio::awaitable<recv_result>
+  make_asio_awaitable(recv_awaitable &&awaitable);
   /**
    * @brief Construct a new qp object. The Queue Pair will be created with the
    * given remote Queue Pair parameters. Once constructed, the Queue Pair will
