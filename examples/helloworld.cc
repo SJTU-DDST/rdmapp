@@ -30,12 +30,12 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   std::string buffer = std::string(msg);
   auto send_buffer = std::as_bytes(std::span(buffer));
   co_await qp->send(send_buffer);
-  std::cout << "Sent to client: " << buffer << std::endl;
+  spdlog::info("sent to client: {}", buffer);
 
   buffer.resize(resp.size());
   std::span<std::byte> recv_buffer = std::as_writable_bytes(std::span(buffer));
   co_await qp->recv(recv_buffer);
-  std::cout << "Received from client: " << buffer << std::endl;
+  spdlog::info("received from client: {}", buffer);
 
   /* Read/Write */
   buffer = std::string(msg);
@@ -44,13 +44,11 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   auto local_mr_serialized = local_mr->serialize();
   auto local_mr_serialized_data = std::as_bytes(std::span(local_mr_serialized));
   co_await qp->send(local_mr_serialized_data);
-  std::cout << "Sent mr addr=" << local_mr->addr()
-            << " length=" << local_mr->length() << " rkey=" << local_mr->rkey()
-            << " to client" << std::endl;
+  spdlog::info("sent mr: addr={} length={} rkey={} to client", local_mr->addr(),
+               local_mr->length(), local_mr->rkey());
   auto [_, imm] = co_await qp->recv(local_mr);
   assert(imm.has_value());
-  std::cout << "Written by client (imm=" << imm.value() << "): " << buffer
-            << std::endl;
+  spdlog::info("written by client: (imm={}): {}", imm.value(), buffer);
 
   /* Atomic */
   uint64_t counter = 42;
@@ -60,15 +58,15 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   auto counter_mr_serialized_data =
       std::as_bytes(std::span(counter_mr_serialized));
   co_await qp->send(counter_mr_serialized_data);
-  std::cout << "Sent mr addr=" << counter_mr->addr()
-            << " length=" << counter_mr->length()
-            << " rkey=" << counter_mr->rkey() << " to client" << std::endl;
+
+  spdlog::info("sent mr: addr={} length={} rkey={} to client",
+               counter_mr->addr(), counter_mr->length(), counter_mr->rkey());
   imm = (co_await qp->recv(local_mr)).second;
   assert(imm.has_value());
-  std::cout << "Fetched and added by client: " << counter << std::endl;
+  spdlog::info("fetched and added by client: {}", counter);
   imm = (co_await qp->recv(local_mr)).second;
   assert(imm.has_value());
-  std::cout << "Compared and swapped by client: " << counter << std::endl;
+  spdlog::info("compared and swapper by client: {}", counter);
 
   co_return;
 }
@@ -78,56 +76,45 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   std::string buffer;
   buffer.resize(msg.size());
   auto recv_buffer = std::as_writable_bytes(std::span(buffer));
-
-  spdlog::info("waiting for bytes sent: {}", recv_buffer.size());
   /* Send/Recv */
   auto [n, _] = co_await qp->recv(recv_buffer);
-  std::cout << "Received " << n << " bytes from server: " << buffer
-            << std::endl;
-
+  spdlog::info("received {} bytes from server: {}", n, buffer);
   buffer = std::string(resp);
   auto send_buffer = std::as_bytes(std::span(buffer));
   co_await qp->send(send_buffer);
-  std::cout << "Sent to server: " << buffer << std::endl;
-
+  spdlog::info("sent to server: {}", buffer);
   /* Read/Write */
   char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   auto remote_mr_serialized_data =
       std::as_writable_bytes(std::span(remote_mr_serialized));
   co_await qp->recv(remote_mr_serialized_data);
   auto remote_mr = rdmapp::remote_mr::deserialize(remote_mr_serialized);
-  std::cout << "Received mr addr=" << remote_mr.addr()
-            << " length=" << remote_mr.length() << " rkey=" << remote_mr.rkey()
-            << " from server" << std::endl;
-
+  spdlog::info("received mr addr={} length={} rkey={} from server",
+               remote_mr.addr(), remote_mr.length(), remote_mr.rkey());
   buffer.resize(msg.size());
   recv_buffer = std::as_writable_bytes(std::span(buffer));
-
   n = co_await qp->read(remote_mr, recv_buffer);
-  std::cout << "Read " << n << " bytes from server: " << buffer << std::endl;
+  spdlog::info("read {} bytes from server: {}", n, buffer);
   buffer = std::string(resp);
   send_buffer = std::as_bytes(std::span(buffer));
   co_await qp->write_with_imm(remote_mr, send_buffer, 1);
-
   /* Atomic Fetch-and-Add (FA)/Compare-and-Swap (CS) */
   char counter_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   recv_buffer = std::as_writable_bytes(std::span(counter_mr_serialized));
   co_await qp->recv(recv_buffer);
   auto counter_mr = rdmapp::remote_mr::deserialize(counter_mr_serialized);
-  std::cout << "Received mr addr=" << counter_mr.addr()
-            << " length=" << counter_mr.length()
-            << " rkey=" << counter_mr.rkey() << " from server" << std::endl;
+  spdlog::info("received mr addr={} length={} rkey={} from server",
+               counter_mr.addr(), counter_mr.length(), counter_mr.rkey());
   uint64_t counter = 0;
   auto cnt_buffer = std::as_writable_bytes(std::span(&counter, 1));
   spdlog::debug("local cnt buffer: size={}", cnt_buffer.size());
   co_await qp->fetch_and_add(counter_mr, cnt_buffer, 1);
-  std::cout << "Fetched and added from server: " << counter << std::endl;
+  spdlog::info("fetched and added from server: {}", counter);
   co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
   spdlog::info("written with imm: buffer={} imm={}", counter, 1);
   co_await qp->compare_and_swap(counter_mr, cnt_buffer, 43, 4422);
-  std::cout << "Compared and swapped from server: " << counter << std::endl;
+  spdlog::info("compared and swapped from server: {}", counter);
   co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
-
   co_return;
 }
 
@@ -156,12 +143,11 @@ int main(int argc, char *argv[]) {
   }
 
   case 3: {
-    auto work_guard = asio::make_work_guard(*io_ctx);
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
     asio::co_spawn(*io_ctx, client(connector), asio::detached);
     io_ctx->run();
-    spdlog::info("client exit");
+    spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;
   }
 
