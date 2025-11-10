@@ -13,6 +13,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <spdlog/spdlog.h>
 #include <string>
 
 #include "rdmapp/executor.h"
@@ -24,6 +25,7 @@ constexpr std::string_view msg = "hello";
 constexpr std::string_view resp = "world";
 
 asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
+  spdlog::info("handling qp");
   /* Send/Recv */
   std::string buffer = std::string(msg);
   auto send_buffer = std::as_bytes(std::span(buffer));
@@ -128,6 +130,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
 }
 
 int main(int argc, char *argv[]) {
+  spdlog::set_level(spdlog::level::debug);
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
