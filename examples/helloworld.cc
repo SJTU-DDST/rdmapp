@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
   switch (argc) {
   case 2: {
     auto work_guard = asio::make_work_guard(*io_ctx);
-    auto l = std::make_shared<rdmapp::listener>();
+    auto l = std::make_shared<rdmapp::listener>(std::stoi(argv[1]));
     auto acc = std::make_shared<rdmapp::qp_acceptor>(pd, cq);
     auto f = [acc](asio::ip::tcp::socket socket) -> asio::awaitable<void> {
       auto qp = co_await acc->accept(std::move(socket));
