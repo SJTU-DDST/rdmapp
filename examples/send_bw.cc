@@ -29,9 +29,9 @@ rdmapp::task<void> worker(size_t id, std::shared_ptr<rdmapp::qp> qp) {
   std::cout << "Worker " << id << " started" << std::endl;
   for (size_t i = 0; i < kSendCount; ++i) {
     if constexpr (Client) {
-      co_await qp->recv(local_mr);
+      co_await qp->async_recv(local_mr);
     } else {
-      co_await qp->send(local_mr);
+      co_await qp->async_send(local_mr);
     }
     if ((i + 1) % kPrintInterval == 0) {
       std::cout << "Worker " << id << (Client ? " recv " : " sent ") << (i + 1)

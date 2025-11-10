@@ -31,10 +31,10 @@ rdmapp::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
             << " length=" << remote_mr.length() << " rkey=" << remote_mr.rkey()
             << " from server" << std::endl;
   for (size_t i = 0; i < kSendCount; ++i) {
-    co_await qp->write(remote_mr, local_mr);
+    co_await qp->async_write(remote_mr, local_mr);
     gSendCount.fetch_add(1);
   }
-  co_await qp->write_with_imm(remote_mr, local_mr, 0xDEADBEEF);
+  co_await qp->async_write_with_imm(remote_mr, local_mr, 0xDEADBEEF);
   co_return;
 }
 
@@ -49,7 +49,7 @@ rdmapp::task<void> server(rdmapp::acceptor &acceptor) {
   std::cout << "Sent mr addr=" << local_mr->addr()
             << " length=" << local_mr->length() << " rkey=" << local_mr->rkey()
             << " to client" << std::endl;
-  auto imm = (co_await qp->recv(local_mr)).second;
+  auto imm = (co_await qp->async_recv(local_mr)).second;
   if (!imm.has_value()) {
     throw std::runtime_error("No imm received");
   }

@@ -21,7 +21,6 @@ namespace rdmapp {
  *
  */
 class qp_connector : public noncopyable {
-  std::weak_ptr<asio::io_context> io_ctx_;
   std::shared_ptr<pd> pd_;
   std::shared_ptr<cq> recv_cq_;
   std::shared_ptr<cq> send_cq_;
@@ -44,8 +43,7 @@ public:
    * @param srq (Optional) The shared receive queue to use for new Queue
    * Pairs.
    */
-  qp_connector(std::shared_ptr<asio::io_context> io_ctx,
-               std::string const &hostname, uint16_t port,
+  qp_connector(std::string const &hostname, uint16_t port,
                std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
                std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
@@ -59,8 +57,7 @@ public:
    * @param srq (Optional) The shared receive queue to use for new Queue
    * Pairs.
    */
-  qp_connector(std::shared_ptr<asio::io_context> io_ctx,
-               std::string const &hostname, uint16_t port,
+  qp_connector(std::string const &hostname, uint16_t port,
                std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
                std::shared_ptr<srq> srq = nullptr);
 

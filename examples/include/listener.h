@@ -5,6 +5,7 @@
 #include <asio/ip/tcp.hpp>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <sys/socket.h>
 
 #include "rdmapp/detail/noncopyable.h"
@@ -15,13 +16,12 @@ class listener : public noncopyable {
 public:
   using handler = std::function<asio::awaitable<void>(asio::ip::tcp::socket)>;
 
-  listener(std::shared_ptr<asio::io_context> io_ctx, uint16_t port = 9988);
+  listener(uint16_t port = 9988);
 
-  void bind_listener(handler f);
+  void listen_and_serve(asio::io_context &io_ctx, handler f);
 
 private:
   asio::awaitable<void> listener_fn(handler f);
-  std::weak_ptr<asio::io_context> io_ctx_;
   uint16_t port_;
 };
 

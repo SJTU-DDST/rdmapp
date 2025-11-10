@@ -10,19 +10,17 @@
 
 namespace rdmapp {
 
-qp_connector::qp_connector(std::shared_ptr<asio::io_context> io_ctx,
-                           std::string const &hostname, uint16_t port,
+qp_connector::qp_connector(std::string const &hostname, uint16_t port,
                            std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
                            std::shared_ptr<cq> send_cq,
                            std::shared_ptr<srq> srq)
-    : io_ctx_(io_ctx), pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq),
+    : pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq),
       hostname_(hostname), port_(port) {}
 
-qp_connector::qp_connector(std::shared_ptr<asio::io_context> io_ctx,
-                           std::string const &hostname, uint16_t port,
+qp_connector::qp_connector(std::string const &hostname, uint16_t port,
                            std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
                            std::shared_ptr<srq> srq)
-    : qp_connector(io_ctx, hostname, port, pd, cq, cq, srq) {}
+    : qp_connector(hostname, port, pd, cq, cq, srq) {}
 
 asio::awaitable<std::shared_ptr<rdmapp::qp>>
 qp_connector::from_socket(asio::ip::tcp::socket socket) {

@@ -1,24 +1,22 @@
 #include "listener.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
-#include <algorithm>
 #include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
 #include <asio/detail/socket_ops.hpp>
+#include <asio/this_coro.hpp>
 #include <cassert>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <span>
 #include <string>
-#include <thread>
 
 #include "rdmapp/executor.h"
 #include <rdmapp/rdmapp.h>
-
-#include "rdmapp/detail/debug.h"
 
 using namespace std::literals::chrono_literals;
 
@@ -73,15 +71,6 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   co_return;
 }
 
-void serve(std::shared_ptr<rdmapp::listener> l,
-           std::shared_ptr<rdmapp::qp_acceptor> acc) {
-  auto f = [acc](asio::ip::tcp::socket socket) -> asio::awaitable<void> {
-    auto qp = co_await acc->accept(std::move(socket));
-    co_await handle_qp(qp);
-  };
-  l->bind_listener(std::move(f));
-}
-
 asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   auto qp = co_await connector->connect();
   std::string buffer;
@@ -108,26 +97,32 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
             << " length=" << remote_mr.length() << " rkey=" << remote_mr.rkey()
             << " from server" << std::endl;
 
-  n = co_await qp->read(remote_mr, buffer, sizeof(buffer));
+  buffer.resize(msg.size());
+  recv_buffer = std::as_writable_bytes(std::span(buffer));
+
+  n = co_await qp->read(remote_mr, recv_buffer);
   std::cout << "Read " << n << " bytes from server: " << buffer << std::endl;
-  std::copy_n("world", sizeof(buffer), buffer);
-  co_await qp->write_with_imm(remote_mr, buffer, sizeof(buffer), 1);
+  buffer = std::string(resp);
+  send_buffer = std::as_bytes(std::span(buffer));
+  co_await qp->write_with_imm(remote_mr, send_buffer, 1);
 
   /* Atomic Fetch-and-Add (FA)/Compare-and-Swap (CS) */
   char counter_mr_serialized[rdmapp::remote_mr::kSerializedSize];
-  co_await qp->recv(counter_mr_serialized, sizeof(counter_mr_serialized));
+  recv_buffer = std::as_writable_bytes(std::span(counter_mr_serialized));
+  co_await qp->recv(recv_buffer);
   auto counter_mr = rdmapp::remote_mr::deserialize(counter_mr_serialized);
   std::cout << "Received mr addr=" << counter_mr.addr()
             << " length=" << counter_mr.length()
             << " rkey=" << counter_mr.rkey() << " from server" << std::endl;
   uint64_t counter = 0;
-  co_await qp->fetch_and_add(counter_mr, &counter, sizeof(counter), 1);
+  auto cnt_buffer =
+      std::as_writable_bytes(std::span(&counter, sizeof(counter)));
+  co_await qp->fetch_and_add(counter_mr, cnt_buffer, 1);
   std::cout << "Fetched and added from server: " << counter << std::endl;
-  co_await qp->write_with_imm(remote_mr, buffer, sizeof(buffer), 1);
-  co_await qp->compare_and_swap(counter_mr, &counter, sizeof(counter), 43,
-                                4422);
+  co_await qp->write_with_imm(remote_mr, cnt_buffer, 1);
+  co_await qp->compare_and_swap(counter_mr, cnt_buffer, 43, 4422);
   std::cout << "Compared and swapped from server: " << counter << std::endl;
-  co_await qp->write_with_imm(remote_mr, buffer, sizeof(buffer), 1);
+  co_await qp->write_with_imm(remote_mr, cnt_buffer, 1);
 
   co_return;
 }
@@ -137,21 +132,38 @@ int main(int argc, char *argv[]) {
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(4);
-  auto work_guard = asio::make_work_guard(*io_ctx);
   auto executor = std::make_shared<rdmapp::executor>(io_ctx);
   auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
 
-  if (argc == 2) {
-    auto l = std::make_shared<rdmapp::listener>(io_ctx);
+  switch (argc) {
+  case 2: {
+    auto work_guard = asio::make_work_guard(*io_ctx);
+    auto l = std::make_shared<rdmapp::listener>();
     auto acc = std::make_shared<rdmapp::qp_acceptor>(pd, cq);
-    serve(l, acc);
-  } else if (argc == 3) {
-    // rdmapp::connector connector(loop, argv[1], std::stoi(argv[2]), pd, cq);
-    // client(connector);
-  } else {
+    auto f = [acc](asio::ip::tcp::socket socket) -> asio::awaitable<void> {
+      auto qp = co_await acc->accept(std::move(socket));
+      co_await handle_qp(qp);
+    };
+    l->listen_and_serve(*io_ctx, std::move(f));
+    io_ctx->run();
+
+    break;
+  }
+
+  case 3: {
+    auto connector = std::make_shared<rdmapp::qp_connector>(
+        argv[1], std::stoi(argv[2]), pd, cq);
+    asio::co_spawn(*io_ctx, client(connector), asio::detached);
+    io_ctx->run();
+    break;
+  }
+
+  default: {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
               << " [server_ip] [port] for client" << std::endl;
+    exit(-1);
   }
-  io_ctx->run();
+  }
+
   return 0;
 }
