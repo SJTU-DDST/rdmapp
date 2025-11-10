@@ -482,8 +482,9 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
                                 std::make_shared<std::decay_t<decltype(self)>>(
                                     std::move(self)),
                             awaitable](struct ibv_wc const &wc) mutable {
+          spdlog::debug("recv_awaitable start resume");
+          spdlog::debug("awaitable in resume: {}", awaitable.use_count());
           awaitable->wc_ = wc;
-          spdlog::debug("recv_awaitable will resume");
           self_ptr->complete(awaitable->resume());
         };
 
@@ -515,14 +516,14 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
         // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
         std::weak_ptr<recv_awaitable> awaitable_local = awaitable;
 
-        auto callback_fn = [self_ptr =
-                                std::make_shared<std::decay_t<decltype(self)>>(
-                                    std::move(self)),
-                            awaitable](struct ibv_wc const &wc) mutable {
-          awaitable->wc_ = wc;
-          spdlog::debug("recv_awaitable will resume");
-          self_ptr->complete(awaitable->resume());
-        };
+        auto callback = executor::make_callback(
+            [self_ptr = std::make_shared<std::decay_t<decltype(self)>>(
+                 std::move(self)),
+             awaitable](struct ibv_wc const &wc) mutable {
+              awaitable->wc_ = wc;
+              spdlog::debug("recv_awaitable will resume");
+              self_ptr->complete(awaitable->resume());
+            });
 
         spdlog::debug("check in lambda: awaitable_local: {}",
                       awaitable_local.use_count());
@@ -535,8 +536,9 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
           spdlog::critical("should not fail to lock shared_ptr");
           std::terminate();
         }
-        awaitable_ptr->suspend(callback_fn);
-        spdlog::debug("recv_awaitable: suspended");
+        awaitable_ptr->suspend(callback);
+        spdlog::debug("recv_awaitable: suspended: callback={}",
+                      fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
@@ -734,9 +736,7 @@ qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
 
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
 
-void qp::recv_awaitable::suspend(executor::callback_fn fn) {
-  auto callback = executor::make_callback(fn);
-
+void qp::recv_awaitable::suspend(executor::callback_ptr callback) {
   auto recv_sge = fill_local_sge(*local_mr_);
 
   struct ibv_recv_wr recv_wr = {};

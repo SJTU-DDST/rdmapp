@@ -1,5 +1,6 @@
 #include "rdmapp/executor.h"
 
+#include "spdlog/spdlog.h"
 #include <asio/post.hpp>
 #include <memory>
 
@@ -9,12 +10,16 @@ executor::executor(std::shared_ptr<asio::io_context> io_context)
 
 void executor::process_wc(struct ibv_wc const &wc) {
   auto fn = [wc] {
+    spdlog::debug("process_wc: {:#x}", wc.wr_id);
     auto cb = reinterpret_cast<callback_ptr>(wc.wr_id);
     (*cb)(wc);
+    spdlog::debug("process_wc done: {:#x}", wc.wr_id);
     destroy_callback(cb);
+    spdlog::debug("process_wc callback destroyed");
   };
 
   asio::post(*io_ctx_, fn);
+  spdlog::debug("submit process_wc task: {:#x}", wc.wr_id);
 }
 
 void executor::shutdown() {}

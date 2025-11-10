@@ -174,7 +174,7 @@ public:
     recv_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length);
     recv_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer);
 
-    void suspend(executor::callback_fn fn);
+    void suspend(executor::callback_ptr fn);
     recv_result resume() const;
 
     bool await_ready() const noexcept;
