@@ -145,7 +145,7 @@ public:
 
     // NOTE: support asio::async_compose for asio::awaitable
     // how to use: https://github.com/chriskohlhoff/asio/issues/795
-    void suspend(executor::callback_fn fn);
+    void suspend(executor::callback_ptr callback);
     send_result resume() const;
 
     bool await_ready() const noexcept;
