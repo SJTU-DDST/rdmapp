@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <string>
 
 #include <infiniband/verbs.h>
@@ -64,6 +65,7 @@ class device : public noncopyable {
   friend class qp;
   friend class srq;
   void open_device(struct ibv_device *target, uint16_t port_num);
+  std::unique_ptr<device_list> device_list_;
 
 public:
   /**

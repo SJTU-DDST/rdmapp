@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 #include <infiniband/verbs.h>
@@ -28,6 +30,7 @@ device_list::device_list() : devices_(nullptr), nr_devices_(0) {
 device_list::~device_list() {
   if (devices_ != nullptr) {
     ::ibv_free_device_list(devices_);
+    spdlog::debug("closed devices list");
   }
 }
 
@@ -119,15 +122,15 @@ device::device(std::string const &device_name, uint16_t port_num)
 
 device::device(uint16_t device_num, uint16_t port_num)
     : device_(nullptr), port_num_(0) {
-  auto devices = device_list();
-  if (device_num >= devices.size()) {
+  device_list_ = std::make_unique<device_list>();
+  if (device_num >= device_list_->size()) {
     char buffer[kErrorStringBufferSize] = {0};
     ::snprintf(buffer, sizeof(buffer),
                "requested device number %d out of range, %lu devices available",
-               device_num, devices.size());
+               device_num, device_list_->size());
     throw std::invalid_argument(buffer);
   }
-  open_device(devices.at(device_num), port_num);
+  open_device(device_list_->at(device_num), port_num);
 }
 
 uint16_t device::port_num() const { return port_num_; }
@@ -163,6 +166,9 @@ std::string device::gid_hex_string(union ibv_gid const &gid) {
 }
 
 device::~device() {
+  if (device_list_ != nullptr) {
+    device_ = nullptr; // avoid dangling pointer
+  }
   if (ctx_ == nullptr) [[unlikely]] {
     return;
   }
