@@ -83,7 +83,7 @@ public:
   // TODO: maybe use send_result in the future
   using send_result = uint32_t;
 
-  class send_awaitable {
+  class send_awaitable : public std::enable_shared_from_this<send_awaitable> {
     friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
@@ -157,7 +157,7 @@ public:
   };
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
-  class recv_awaitable {
+  class recv_awaitable : public std::enable_shared_from_this<recv_awaitable> {
     friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;

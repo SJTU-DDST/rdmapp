@@ -443,16 +443,16 @@ qp::send_result qp::send_awaitable::resume() const {
 uint32_t qp::send_awaitable::await_resume() const { return resume(); }
 
 asio::awaitable<qp::recv_result> qp::recv_awaitable::asio_awaitable() {
-  auto fn = [awaitable = std::move(*this)](auto &&self) mutable {
-    awaitable.suspend(std::move(self));
+  auto fn = [awaitable = this->shared_from_this()](auto &&self) mutable {
+    awaitable->suspend(std::move(self));
   };
   return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
       std::move(fn), asio::use_awaitable);
 }
 
 asio::awaitable<qp::send_result> qp::send_awaitable::asio_awaitable() {
-  auto fn = [awaitable = std::move(*this)](auto &&self) mutable {
-    awaitable.suspend(std::move(self));
+  auto fn = [awaitable = this->shared_from_this()](auto &&self) mutable {
+    awaitable->suspend(std::move(self));
   };
   return asio::async_compose<decltype(asio::use_awaitable), void(send_result)>(
       std::move(fn), asio::use_awaitable);
