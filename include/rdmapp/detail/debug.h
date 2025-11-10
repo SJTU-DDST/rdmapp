@@ -22,7 +22,7 @@ enum class LogLevel {
 }
 
 constexpr static inline rdmapp::LogLevel rdmapp_log_level =
-    rdmapp::LogLevel::TRACE;
+    rdmapp::LogLevel::DEBUG;
 
 #define RDMAPP_LOG_TRACE(msg, ...)                                             \
   do {                                                                         \

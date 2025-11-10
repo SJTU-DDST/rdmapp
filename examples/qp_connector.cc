@@ -32,11 +32,11 @@ qp_connector::from_socket(asio::ip::tcp::socket socket) {
 
   qp_ptr->rtr(remote_qp.header.lid, remote_qp.header.qp_num,
               remote_qp.header.sq_psn, remote_qp.header.gid);
-  spdlog::debug("qp: rtr");
+  spdlog::trace("qp: rtr");
   qp_ptr->user_data() = std::move(remote_qp.user_data);
-  spdlog::debug("qp: user_data: size={}", qp_ptr->user_data().size());
+  spdlog::trace("qp: user_data: size={}", qp_ptr->user_data().size());
   qp_ptr->rts();
-  spdlog::debug("qp: rts");
+  spdlog::trace("qp: rts");
   co_return qp_ptr;
 }
 

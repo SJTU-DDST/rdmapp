@@ -22,7 +22,7 @@ cq_poller::cq_poller(std::shared_ptr<cq> cq, std::shared_ptr<executor> executor,
 cq_poller::~cq_poller() {}
 
 void cq_poller::worker(std::stop_token token) {
-  spdlog::debug("polling cqe");
+  spdlog::debug("cq_poller: polling cqe");
   while (!token.stop_requested()) {
     try {
       auto nr_wc = cq_->poll(wc_vec_);

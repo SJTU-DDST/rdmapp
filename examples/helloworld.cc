@@ -107,7 +107,6 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
                counter_mr.addr(), counter_mr.length(), counter_mr.rkey());
   uint64_t counter = 0;
   auto cnt_buffer = std::as_writable_bytes(std::span(&counter, 1));
-  spdlog::debug("local cnt buffer: size={}", cnt_buffer.size());
   co_await qp->fetch_and_add(counter_mr, cnt_buffer, 1);
   spdlog::info("fetched and added from server: {}", counter);
   co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
