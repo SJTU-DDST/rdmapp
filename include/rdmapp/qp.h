@@ -15,6 +15,7 @@
 
 #include "rdmapp/cq.h"
 #include "rdmapp/device.h"
+#include "rdmapp/executor.h"
 #include "rdmapp/mr.h"
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"
@@ -144,7 +145,7 @@ public:
 
     // NOTE: support asio::async_compose for asio::awaitable
     // how to use: https://github.com/chriskohlhoff/asio/issues/795
-    void suspend(auto &&self);
+    void suspend(executor::callback_fn fn);
     send_result resume() const;
 
     bool await_ready() const noexcept;
@@ -155,7 +156,7 @@ public:
   };
 
   [[nodiscard]] asio::awaitable<send_result>
-  make_asio_awaitable(send_awaitable &&awaitable);
+  make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable);
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
   class recv_awaitable {
@@ -167,11 +168,13 @@ public:
     enum ibv_wr_opcode opcode [[maybe_unused]];
 
   public:
+    recv_awaitable(recv_awaitable &&) = default;
+    recv_awaitable(recv_awaitable const &) = delete;
     recv_awaitable(std::shared_ptr<qp> qp, std::shared_ptr<local_mr> local_mr);
     recv_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length);
     recv_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer);
 
-    void suspend(auto &&self);
+    void suspend(executor::callback_fn fn);
     recv_result resume() const;
 
     bool await_ready() const noexcept;
@@ -180,7 +183,7 @@ public:
   };
 
   [[nodiscard]] asio::awaitable<recv_result>
-  make_asio_awaitable(recv_awaitable &&awaitable);
+  make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable);
   /**
    * @brief Construct a new qp object. The Queue Pair will be created with the
    * given remote Queue Pair parameters. Once constructed, the Queue Pair will

@@ -49,8 +49,8 @@ public:
    * @param cb The callback function.
    * @return callback_ptr The callback function pointer.
    */
-  template <class T> static callback_ptr make_callback(T const &cb) {
-    return new executor::callback_fn(cb);
+  template <class T> static callback_ptr make_callback(T &&cb) {
+    return new executor::callback_fn(std::forward<T>(cb));
   }
 
   /**
