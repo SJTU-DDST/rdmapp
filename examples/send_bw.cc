@@ -1,6 +1,7 @@
 #include "asio/awaitable.hpp"
 #include "asio/co_spawn.hpp"
 #include "asio/detached.hpp"
+#include "asio/thread_pool.hpp"
 #include "listener.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
@@ -15,12 +16,12 @@
 
 using namespace std::literals::chrono_literals;
 
-constexpr size_t kBufferSizeBytes = 2 * 1024 * 1024; // 2 MB
-constexpr size_t kWorkerCount = 4;
+constexpr size_t kBufferSizeBytes = 12 * 1024 * 1024; // 2 MB
+constexpr size_t kWorkerCount = 8;
 constexpr size_t kSendCount = 8 * 1024;
 constexpr size_t kPrintInterval = 1024;
 constexpr size_t kTotalSizeBytes = kBufferSizeBytes * kSendCount * kWorkerCount;
-constexpr size_t kGlobalThread = 8;
+constexpr size_t kGlobalThread = 16;
 
 template <bool Client = false>
 asio::awaitable<void> worker(size_t id, std::shared_ptr<rdmapp::qp> qp) {
@@ -69,6 +70,9 @@ int main(int argc, char *argv[]) {
       kGlobalThread); // NOTE:  thread for global io context
   auto executor = std::make_shared<rdmapp::executor>(io_ctx);
   auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
+
+  asio::thread_pool pool(kGlobalThread);
+
   if (argc == 2) {
     auto work_guard = asio::make_work_guard(*io_ctx);
     auto l = std::make_shared<rdmapp::listener>(std::stoi(argv[1]));
@@ -78,13 +82,24 @@ int main(int argc, char *argv[]) {
       co_await handler<false>(qp);
     };
     l->listen_and_serve(*io_ctx, std::move(f));
-    io_ctx->run();
+    for (size_t i = 0; i < kGlobalThread; i++)
+      asio::post(pool, [i, io_ctx]() {
+        spdlog::info("thread {} start", i);
+        io_ctx->run();
+      });
+    pool.join();
+
   } else if (argc == 3) {
     auto connector = rdmapp::qp_connector(argv[1], std::stoi(argv[2]), pd, cq);
     asio::co_spawn(*io_ctx, client(connector), asio::detached);
 
     auto tik = std::chrono::high_resolution_clock::now();
-    io_ctx->run();
+    for (size_t i = 0; i < kGlobalThread; i++)
+      asio::post(pool, [i, io_ctx]() {
+        spdlog::info("thread {} start", i);
+        io_ctx->run();
+      });
+    pool.join();
     auto tok = std::chrono::high_resolution_clock::now();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
 
