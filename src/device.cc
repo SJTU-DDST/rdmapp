@@ -12,8 +12,6 @@
 
 #include "rdmapp/error.h"
 
-#include "rdmapp/detail/debug.h"
-
 namespace rdmapp {
 
 device_list::device_list() : devices_(nullptr), nr_devices_(0) {
@@ -99,8 +97,8 @@ void device::open_device(struct ibv_device *target, uint16_t port_num) {
     return "unspecified";
   }();
   auto const gid_str = gid_hex_string(gid_);
-  RDMAPP_LOG_DEBUG("opened Infiniband device gid=%s lid=%d link_layer=%s",
-                   gid_str.c_str(), port_attr_.lid, link_layer);
+  spdlog::debug("opened Infiniband device gid={} lid={} link_layer={}", gid_str,
+                port_attr_.lid, link_layer);
 }
 
 device::device(struct ibv_device *target, uint16_t port_num) {
@@ -176,11 +174,10 @@ device::~device() {
   auto const gid_str = gid_hex_string(gid_);
 
   if (auto rc = ::ibv_close_device(ctx_); rc != 0) [[unlikely]] {
-    RDMAPP_LOG_ERROR("failed to close device gid=%s lid=%d: %s",
-                     gid_str.c_str(), port_attr_.lid, ::strerror(rc));
+    spdlog::error("failed to close device gid={} lid={}: {}", gid_str,
+                  port_attr_.lid, ::strerror(rc));
   } else {
-    RDMAPP_LOG_DEBUG("closed device gid=%s lid=%d", gid_str.c_str(),
-                     port_attr_.lid);
+    spdlog::debug("closed device gid={} lid={}", gid_str, port_attr_.lid);
   }
 }
 

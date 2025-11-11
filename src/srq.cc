@@ -2,13 +2,12 @@
 
 #include <cstring>
 #include <memory>
+#include <spdlog/spdlog.h>
 
 #include <infiniband/verbs.h>
 
 #include "rdmapp/device.h"
 #include "rdmapp/error.h"
-
-#include "rdmapp/detail/debug.h"
 
 namespace rdmapp {
 
@@ -21,7 +20,7 @@ srq::srq(std::shared_ptr<pd> pd, size_t max_wr) : srq_(nullptr), pd_(pd) {
 
   srq_ = ::ibv_create_srq(pd_->pd_, &srq_init_attr);
   check_ptr(srq_, "failed to create srq");
-  RDMAPP_LOG_DEBUG("created srq %p", reinterpret_cast<void *>(srq_));
+  spdlog::debug("created srq {}", fmt::ptr(srq_));
 }
 
 srq::~srq() {
@@ -30,10 +29,10 @@ srq::~srq() {
   }
 
   if (auto rc = ::ibv_destroy_srq(srq_); rc != 0) [[unlikely]] {
-    RDMAPP_LOG_ERROR("failed to destroy srq %p: %s (rc=%d)",
-                     reinterpret_cast<void *>(srq_), strerror(rc), rc);
+    spdlog::error("failed to destroy srq {}: {} (rc={})", fmt::ptr(srq_),
+                  strerror(rc), rc);
   } else {
-    RDMAPP_LOG_DEBUG("destroyed srq %p", reinterpret_cast<void *>(srq_));
+    spdlog::debug("destroyed srq {}", fmt::ptr(srq_));
   }
 }
 

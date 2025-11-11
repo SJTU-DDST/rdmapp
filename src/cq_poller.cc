@@ -10,8 +10,6 @@
 
 #include "rdmapp/executor.h"
 
-#include "rdmapp/detail/debug.h"
-
 namespace rdmapp {
 
 cq_poller::cq_poller(std::shared_ptr<cq> cq, std::shared_ptr<executor> executor,
@@ -35,7 +33,7 @@ void cq_poller::worker(std::stop_token token) {
         executor_->process_wc(wc);
       }
     } catch (std::runtime_error &e) {
-      RDMAPP_LOG_ERROR("%s", e.what());
+      spdlog::error(e.what());
       return;
     }
   }

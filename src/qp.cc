@@ -32,7 +32,6 @@
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"
 
-#include "rdmapp/detail/debug.h"
 #include "rdmapp/detail/serdes.h"
 
 namespace rdmapp {
@@ -102,9 +101,8 @@ void qp::create() {
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
   check_ptr(qp_, "failed to create qp");
   sq_psn_ = next_sq_psn.fetch_add(1);
-  RDMAPP_LOG_TRACE("created qp %p lid=%u qpn=%u psn=%u",
-                   reinterpret_cast<void *>(qp_), pd_->device_ptr()->lid(),
-                   qp_->qp_num, sq_psn_);
+  spdlog::trace("created qp {} lid={} qpn={} psn={}", fmt::ptr(qp_),
+                pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
 void qp::init() {
@@ -121,7 +119,7 @@ void qp::init() {
                                  IBV_QP_PKEY_INDEX),
              "failed to transition qp to init state");
   } catch (const std::exception &e) {
-    RDMAPP_LOG_ERROR("%s", e.what());
+    spdlog::error(e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -155,7 +153,7 @@ void qp::rtr(uint16_t remote_lid, uint32_t remote_qpn, uint32_t remote_psn,
                                  IBV_QP_MAX_DEST_RD_ATOMIC),
              "failed to transition qp to rtr state");
   } catch (const std::exception &e) {
-    RDMAPP_LOG_ERROR("%s", e.what());
+    spdlog::error(e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -179,7 +177,7 @@ void qp::rts() {
                                  IBV_QP_MAX_QP_RD_ATOMIC),
              "failed to transition qp to rts state");
   } catch (std::exception const &e) {
-    RDMAPP_LOG_ERROR("%s", e.what());
+    spdlog::error(e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -188,9 +186,8 @@ void qp::rts() {
 
 void qp::post_send(struct ibv_send_wr const &send_wr,
                    struct ibv_send_wr *&bad_send_wr) {
-  RDMAPP_LOG_TRACE("post send wr_id=%p addr=%p",
-                   reinterpret_cast<void *>(send_wr.wr_id),
-                   reinterpret_cast<void *>(send_wr.sg_list->addr));
+  spdlog::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
+                send_wr.sg_list->addr);
   check_rc(::ibv_post_send(qp_, const_cast<struct ibv_send_wr *>(&send_wr),
                            &bad_send_wr),
            "failed to post send");
@@ -203,9 +200,8 @@ void qp::post_recv(struct ibv_recv_wr const &recv_wr,
 
 void qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
                       struct ibv_recv_wr *&bad_recv_wr) const {
-  RDMAPP_LOG_TRACE("post recv wr_id=%p addr=%p",
-                   reinterpret_cast<void *>(recv_wr.wr_id),
-                   reinterpret_cast<void *>(recv_wr.sg_list->addr));
+  spdlog::trace("post recv wr_id={:#x} addr={:#x}", recv_wr.wr_id,
+                recv_wr.sg_list->addr);
   check_rc(::ibv_post_recv(qp_, const_cast<struct ibv_recv_wr *>(&recv_wr),
                            &bad_recv_wr),
            "failed to post recv");
@@ -767,10 +763,10 @@ void qp::destroy() {
   }
 
   if (auto rc = ::ibv_destroy_qp(qp_); rc != 0) [[unlikely]] {
-    RDMAPP_LOG_ERROR("failed to destroy qp %p: %s",
-                     reinterpret_cast<void *>(qp_), strerror(errno));
+    spdlog::error("failed to destroy qp {}: {}", fmt::ptr(qp_),
+                  strerror(errno));
   } else {
-    RDMAPP_LOG_TRACE("destroyed qp %p", reinterpret_cast<void *>(qp_));
+    spdlog::trace("destroyed qp {}", fmt::ptr(qp_));
   }
 }
 

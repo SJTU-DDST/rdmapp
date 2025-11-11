@@ -1,8 +1,8 @@
 #include "rdmapp/executor.h"
 
-#include "spdlog/spdlog.h"
 #include <asio/post.hpp>
 #include <memory>
+#include <spdlog/spdlog.h>
 
 namespace rdmapp {
 executor::executor(std::shared_ptr<asio::io_context> io_context)
