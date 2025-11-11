@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
-project(rdmapp)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
+project(rdmapp CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 include(cmake/deps.cmake)
