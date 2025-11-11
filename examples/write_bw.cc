@@ -3,6 +3,7 @@
 #include "spdlog/spdlog.h"
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/thread_pool.hpp>
 #include <cassert>
 #include <iostream>
 #include <memory>
@@ -72,8 +73,6 @@ int main(int argc, char *argv[]) {
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(4);
-  auto work_guard = asio::make_work_guard(*io_ctx);
-  std::jthread _([&io_ctx]() { io_ctx->run(); });
   auto executor = std::make_shared<rdmapp::executor>(io_ctx);
   auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
 
@@ -84,6 +83,12 @@ int main(int argc, char *argv[]) {
     }
   });
 
+  std::jthread _([io_ctx]() {
+    auto work_guard = asio::make_work_guard(*io_ctx);
+    io_ctx->run();
+  });
+
+  asio::thread_pool pool(4);
   if (argc == 2) {
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
@@ -93,8 +98,10 @@ int main(int argc, char *argv[]) {
   } else if (argc == 3) {
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
-    asio::co_spawn(*io_ctx, client(connector), asio::detached);
-    io_ctx->run();
+    // NOTE: thread pool perform actually better
+    asio::co_spawn(pool, client(connector), asio::detached);
+    pool.join();
+    io_ctx->stop();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
   } else {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]

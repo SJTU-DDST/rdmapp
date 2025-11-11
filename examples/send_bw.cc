@@ -73,37 +73,30 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
-  auto io_ctx = std::make_shared<asio::io_context>(
-      kGlobalThread); // NOTE:  thread for global io context
+  auto io_ctx = std::make_shared<asio::io_context>(4);
   auto executor = std::make_shared<rdmapp::executor>(io_ctx);
   auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
 
   asio::thread_pool pool(kGlobalThread);
+  std::jthread _([io_ctx]() {
+    auto work_guard = asio::make_work_guard(*io_ctx);
+    io_ctx->run();
+  });
 
   if (argc == 2) {
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
-    asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
-    for (size_t i = 0; i < kGlobalThread; i++)
-      asio::post(pool, [i, io_ctx]() {
-        spdlog::info("thread {} start", i);
-        io_ctx->run();
-      });
+    asio::co_spawn(pool, server(acceptor), asio::detached);
     pool.join();
-
+    io_ctx->stop();
   } else if (argc == 3) {
     auto connector = rdmapp::qp_connector(argv[1], std::stoi(argv[2]), pd, cq);
-    asio::co_spawn(*io_ctx, client(connector), asio::detached);
-
+    asio::co_spawn(pool, client(connector), asio::detached);
     auto tik = std::chrono::high_resolution_clock::now();
-    for (size_t i = 0; i < kGlobalThread; i++)
-      asio::post(pool, [i, io_ctx]() {
-        spdlog::info("thread {} start", i);
-        io_ctx->run();
-      });
     pool.join();
     auto tok = std::chrono::high_resolution_clock::now();
+    io_ctx->stop();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
 
     std::chrono::duration<double> seconds = tok - tik;
@@ -111,7 +104,6 @@ int main(int argc, char *argv[]) {
     double throughput = mb / seconds.count();
     spdlog::info("total: {} MB, elapsed: {} s, throughput: {}", mb,
                  seconds.count(), throughput);
-
   } else {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
               << " [server_ip] [port] for client" << std::endl;
