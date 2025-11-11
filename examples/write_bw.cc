@@ -1,6 +1,5 @@
 #include "qp_acceptor.h"
 #include "qp_connector.h"
-#include "spdlog/spdlog.h"
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/thread_pool.hpp>
@@ -8,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <thread>
 

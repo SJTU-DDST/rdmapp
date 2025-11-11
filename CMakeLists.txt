@@ -111,12 +111,6 @@ endif ()
 
 if (RDMAPP_BUILD_EXAMPLES)
   set(RDMAPP_EXAMPLES_LIB_SOURCE_FILES
-    examples/socket/event_loop.cc
-    examples/socket/channel.cc
-    examples/socket/tcp_connection.cc
-    examples/socket/tcp_listener.cc
-    examples/acceptor.cc
-    examples/connector.cc
     examples/qp_transmission.cc
     examples/qp_acceptor.cc
     examples/qp_connector.cc

@@ -7,7 +7,6 @@
 #include <rdmapp/device.h>
 #include <rdmapp/pd.h>
 #include <rdmapp/qp.h>
-#include <rdmapp/task.h>
 
 namespace rdmapp {
 

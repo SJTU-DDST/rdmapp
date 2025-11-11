@@ -9,7 +9,6 @@
 #include <rdmapp/cq.h>
 #include <rdmapp/pd.h>
 #include <rdmapp/qp.h>
-#include <rdmapp/task.h>
 
 #include "rdmapp/detail/noncopyable.h"
 

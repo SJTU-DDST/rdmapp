@@ -1,9 +1,9 @@
-#include "asio/awaitable.hpp"
-#include "asio/co_spawn.hpp"
-#include "asio/detached.hpp"
-#include "asio/thread_pool.hpp"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/thread_pool.hpp>
 #include <cassert>
 #include <chrono>
 #include <iostream>
@@ -47,7 +47,6 @@ asio::awaitable<void> worker(size_t id, std::shared_ptr<rdmapp::qp> qp) {
 template <bool Client = false>
 asio::awaitable<void> handler(std::shared_ptr<rdmapp::qp> qp) {
   auto executor = co_await asio::this_coro::executor;
-  std::vector<std::future<void> *> futures;
   for (size_t i = 0; i < kWorkerCount; ++i) {
     asio::co_spawn(executor, worker<Client>(i, qp), asio::detached);
   }
