@@ -694,14 +694,20 @@ qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
 
 bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
-  auto recv_sge = fill_local_sge(*local_mr_);
+  ibv_sge recv_sge, *recv_sge_list{nullptr};
+  int num_sge{0};
+  if (local_mr_) {
+    recv_sge = fill_local_sge(*local_mr_);
+    recv_sge_list = &recv_sge;
+    num_sge = 1;
+  }
 
   struct ibv_recv_wr recv_wr = {};
   struct ibv_recv_wr *bad_recv_wr = nullptr;
   recv_wr.next = nullptr;
-  recv_wr.num_sge = 1;
   recv_wr.wr_id = reinterpret_cast<uint64_t>(callback);
-  recv_wr.sg_list = &recv_sge;
+  recv_wr.num_sge = num_sge;
+  recv_wr.sg_list = recv_sge_list;
 
   try {
     qp_->post_recv(recv_wr, bad_recv_wr);

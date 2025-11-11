@@ -48,11 +48,8 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   spdlog::info("sent mr: addr={} length={} rkey={} to client", local_mr->addr(),
                local_mr->length(), local_mr->rkey());
 
-  // to avoid confusing, use another small buffer for receiving the written imm
-  int unused_local = 0;
-  auto unused_local_mr = std::make_shared<rdmapp::local_mr>(
-      qp->pd_ptr()->reg_mr(&unused_local, sizeof(unused_local)));
-  auto [_, imm] = co_await qp->recv(unused_local_mr);
+  /* recv the imm which needs ibv_post_send without local mr */
+  auto [_, imm] = co_await qp->recv(nullptr);
   assert(imm.has_value());
   spdlog::info("written by client: (imm={}): {}", imm.value(), buffer);
 
