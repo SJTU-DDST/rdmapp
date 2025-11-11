@@ -728,6 +728,8 @@ qp::recv_result qp::recv_awaitable::resume() const {
   }
   check_wc_status(wc_.status, "failed to recv");
   if (wc_.wc_flags & IBV_WC_WITH_IMM) {
+    spdlog::debug("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id,
+                  wc_.imm_data);
     return std::make_pair(wc_.byte_len, wc_.imm_data);
   }
   return std::make_pair(wc_.byte_len, std::nullopt);

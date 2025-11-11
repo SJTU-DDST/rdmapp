@@ -30,8 +30,8 @@ void cq_poller::worker(std::stop_token token) {
         std::this_thread::yield();
       for (size_t i = 0; i < nr_wc; ++i) {
         auto &wc = wc_vec_[i];
-        RDMAPP_LOG_TRACE("polled cqe wr_id=%p status=%d",
-                         reinterpret_cast<void *>(wc.wr_id), wc.status);
+        spdlog::trace("polled cqe wr_id={:#x} status={}", wc.wr_id,
+                      static_cast<int>(wc.status));
         executor_->process_wc(wc);
       }
     } catch (std::runtime_error &e) {

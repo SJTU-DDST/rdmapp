@@ -15,6 +15,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+#include "rdmapp/mr.h"
 #include <rdmapp/executor.h>
 #include <rdmapp/rdmapp.h>
 
@@ -46,7 +47,12 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   co_await qp->send(local_mr_serialized_data);
   spdlog::info("sent mr: addr={} length={} rkey={} to client", local_mr->addr(),
                local_mr->length(), local_mr->rkey());
-  auto [_, imm] = co_await qp->recv(local_mr);
+
+  // to avoid confusing, use another small buffer for receiving the written imm
+  int unused_local = 0;
+  auto unused_local_mr = std::make_shared<rdmapp::local_mr>(
+      qp->pd_ptr()->reg_mr(&unused_local, sizeof(unused_local)));
+  auto [_, imm] = co_await qp->recv(unused_local_mr);
   assert(imm.has_value());
   spdlog::info("written by client: (imm={}): {}", imm.value(), buffer);
 
