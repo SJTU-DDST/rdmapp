@@ -115,7 +115,6 @@ if (RDMAPP_BUILD_EXAMPLES)
     examples/socket/channel.cc
     examples/socket/tcp_connection.cc
     examples/socket/tcp_listener.cc
-    examples/socket/listener.cc
     examples/acceptor.cc
     examples/connector.cc
     examples/qp_transmission.cc

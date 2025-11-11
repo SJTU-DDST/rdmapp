@@ -1,18 +1,27 @@
 #include "qp_acceptor.h"
 
 #include "qp_transmission.h"
+#include <asio/use_awaitable.hpp>
+#include <cstdint>
+#include <memory>
 
 namespace rdmapp {
-qp_acceptor::qp_acceptor(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-                         std::shared_ptr<srq> srq)
-    : qp_acceptor(pd, cq, cq, srq) {}
 
-qp_acceptor::qp_acceptor(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
+qp_acceptor::qp_acceptor(std::shared_ptr<asio::io_context> io_ctx,
+                         uint16_t port, std::shared_ptr<pd> pd,
+                         std::shared_ptr<cq> cq, std::shared_ptr<srq> srq)
+    : qp_acceptor(io_ctx, port, pd, cq, cq, srq) {}
+
+qp_acceptor::qp_acceptor(std::shared_ptr<asio::io_context> io_ctx,
+                         uint16_t port, std::shared_ptr<pd> pd,
+                         std::shared_ptr<cq> recv_cq,
                          std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq)
-    : pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq) {}
+    : pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq), io_ctx_(io_ctx),
+      acceptor_(*io_ctx, {asio::ip::tcp::v4(), port}) {}
 
-asio::awaitable<std::shared_ptr<qp>>
-qp_acceptor::accept(asio::ip::tcp::socket socket) {
+asio::awaitable<std::shared_ptr<qp>> qp_acceptor::accept() {
+  asio::ip::tcp::socket socket =
+      co_await acceptor_.async_accept(asio::use_awaitable);
   auto remote_qp = co_await recv_qp(socket);
   auto local_qp = std::make_shared<rdmapp::qp>(
       remote_qp.header.lid, remote_qp.header.qp_num, remote_qp.header.sq_psn,

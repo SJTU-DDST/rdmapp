@@ -1,7 +1,7 @@
 #pragma once
-
 #include <asio/awaitable.hpp>
 #include <asio/ip/tcp.hpp>
+#include <cstdint>
 
 #include <rdmapp/detail/noncopyable.h>
 #include <rdmapp/device.h>
@@ -20,6 +20,8 @@ class qp_acceptor : public noncopyable {
   std::shared_ptr<cq> recv_cq_;
   std::shared_ptr<cq> send_cq_;
   std::shared_ptr<srq> srq_;
+  std::shared_ptr<asio::io_context> io_ctx_;
+  asio::ip::tcp::acceptor acceptor_;
 
 public:
   /**
@@ -32,7 +34,8 @@ public:
    * @param srq () The shared receive queue to use for incoming Queue
    * Pairs.
    */
-  qp_acceptor(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
+  qp_acceptor(std::shared_ptr<asio::io_context> io_ctx, uint16_t port,
+              std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
               std::shared_ptr<srq> srq = nullptr);
 
   /**
@@ -46,7 +49,8 @@ public:
    * @param srq (Optional) The shared receive queue to use for incoming Queue
    * Pairs.
    */
-  qp_acceptor(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
+  qp_acceptor(std::shared_ptr<asio::io_context> io_ctx, uint16_t port,
+              std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
               std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
   /**
@@ -56,7 +60,7 @@ public:
    * @return task<std::shared_ptr<qp>> A completion task that returns a shared
    * pointer to the new queue pair. It will be in the RTS state.
    */
-  asio::awaitable<std::shared_ptr<qp>> accept(asio::ip::tcp::socket socket);
+  asio::awaitable<std::shared_ptr<qp>> accept();
 
   ~qp_acceptor() = default;
 };

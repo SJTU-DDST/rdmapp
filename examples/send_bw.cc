@@ -2,7 +2,6 @@
 #include "asio/co_spawn.hpp"
 #include "asio/detached.hpp"
 #include "asio/thread_pool.hpp"
-#include "listener.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
 #include <cassert>
@@ -61,6 +60,14 @@ asio::awaitable<void> client(rdmapp::qp_connector &connector) {
   co_return;
 }
 
+asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
+  while (true) {
+    auto qp = co_await acceptor->accept();
+    asio::co_spawn(co_await asio::this_coro::executor, handler<false>(qp),
+                   asio::detached);
+  }
+}
+
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::info);
   auto device = std::make_shared<rdmapp::device>(0, 1);
@@ -75,13 +82,9 @@ int main(int argc, char *argv[]) {
 
   if (argc == 2) {
     auto work_guard = asio::make_work_guard(*io_ctx);
-    auto l = std::make_shared<rdmapp::listener>(std::stoi(argv[1]));
-    auto acc = std::make_shared<rdmapp::qp_acceptor>(pd, cq);
-    auto f = [acc](asio::ip::tcp::socket socket) -> asio::awaitable<void> {
-      auto qp = co_await acc->accept(std::move(socket));
-      co_await handler<false>(qp);
-    };
-    l->listen_and_serve(*io_ctx, std::move(f));
+    uint16_t port = (uint16_t)std::stoi(argv[1]);
+    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
+    asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
     for (size_t i = 0; i < kGlobalThread; i++)
       asio::post(pool, [i, io_ctx]() {
         spdlog::info("thread {} start", i);
