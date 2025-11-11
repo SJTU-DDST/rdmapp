@@ -145,7 +145,7 @@ public:
 
     // NOTE: support asio::async_compose for asio::awaitable
     // how to use: https://github.com/chriskohlhoff/asio/issues/795
-    void suspend(executor::callback_ptr callback);
+    bool suspend(executor::callback_ptr callback) noexcept;
     send_result resume() const;
 
     bool await_ready() const noexcept;
@@ -174,7 +174,7 @@ public:
     recv_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length);
     recv_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer);
 
-    void suspend(executor::callback_ptr fn);
+    bool suspend(executor::callback_ptr fn) noexcept;
     recv_result resume() const;
 
     bool await_ready() const noexcept;

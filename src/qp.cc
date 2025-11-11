@@ -336,46 +336,10 @@ bool qp::send_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
     wc_ = wc;
     h.resume();
   });
-
-  auto send_sge = fill_local_sge(*local_mr_);
-
-  struct ibv_send_wr send_wr = {};
-  struct ibv_send_wr *bad_send_wr = nullptr;
-  send_wr.opcode = opcode_;
-  send_wr.next = nullptr;
-  send_wr.num_sge = 1;
-  send_wr.wr_id = reinterpret_cast<uint64_t>(callback);
-  send_wr.send_flags = IBV_SEND_SIGNALED;
-  send_wr.sg_list = &send_sge;
-  if (is_rdma()) {
-    assert(remote_mr_.addr() != nullptr);
-    send_wr.wr.rdma.remote_addr = reinterpret_cast<uint64_t>(remote_mr_.addr());
-    send_wr.wr.rdma.rkey = remote_mr_.rkey();
-    if (opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM) {
-      send_wr.imm_data = imm_;
-    }
-  } else if (is_atomic()) {
-    assert(remote_mr_.addr() != nullptr);
-    send_wr.wr.atomic.remote_addr =
-        reinterpret_cast<uint64_t>(remote_mr_.addr());
-    send_wr.wr.atomic.rkey = remote_mr_.rkey();
-    send_wr.wr.atomic.compare_add = compare_add_;
-    if (opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP) {
-      send_wr.wr.atomic.swap = swap_;
-    }
-  }
-
-  try {
-    qp_->post_send(send_wr, bad_send_wr);
-  } catch (std::runtime_error &e) {
-    exception_ = std::make_exception_ptr(e);
-    executor::destroy_callback(callback);
-    return false;
-  }
-  return true;
+  return this->suspend(callback);
 }
 
-void qp::send_awaitable::suspend(executor::callback_ptr callback) {
+bool qp::send_awaitable::suspend(executor::callback_ptr callback) noexcept {
   auto send_sge = fill_local_sge(*local_mr_);
 
   struct ibv_send_wr send_wr = {};
@@ -410,7 +374,9 @@ void qp::send_awaitable::suspend(executor::callback_ptr callback) {
     exception_ = std::make_exception_ptr(e);
     // NOTE: in that case, cq will not have this event
     executor::destroy_callback(callback);
+    return false;
   }
+  return true;
 }
 
 constexpr bool qp::send_awaitable::is_rdma() const {
@@ -727,31 +693,7 @@ qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
 
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
 
-void qp::recv_awaitable::suspend(executor::callback_ptr callback) {
-  auto recv_sge = fill_local_sge(*local_mr_);
-
-  struct ibv_recv_wr recv_wr = {};
-  struct ibv_recv_wr *bad_recv_wr = nullptr;
-  recv_wr.next = nullptr;
-  recv_wr.num_sge = 1;
-  recv_wr.wr_id = reinterpret_cast<uint64_t>(callback);
-  recv_wr.sg_list = &recv_sge;
-
-  try {
-    qp_->post_recv(recv_wr, bad_recv_wr);
-  } catch (std::runtime_error &e) {
-    exception_ = std::make_exception_ptr(e);
-    spdlog::debug("destroy callback on error: {}", fmt::ptr(callback));
-    executor::destroy_callback(callback);
-  }
-}
-
-bool qp::recv_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
-  auto callback = executor::make_callback([h, this](struct ibv_wc const &wc) {
-    wc_ = wc;
-    h.resume();
-  });
-
+bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
   auto recv_sge = fill_local_sge(*local_mr_);
 
   struct ibv_recv_wr recv_wr = {};
@@ -770,6 +712,14 @@ bool qp::recv_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
     return false;
   }
   return true;
+}
+
+bool qp::recv_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
+  auto callback = executor::make_callback([h, this](struct ibv_wc const &wc) {
+    wc_ = wc;
+    h.resume();
+  });
+  return this->suspend(callback);
 }
 
 qp::recv_result qp::recv_awaitable::resume() const {
