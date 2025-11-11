@@ -1,6 +1,11 @@
 include(FetchContent)
 
-message("-- Find asio: ${ASIO_INCLUDE}")
+
+fetchcontent_declare(
+  asio
+  GIT_REPOSITORY git@github.com:chriskohlhoff/asio.git
+  GIT_TAG asio-1-36-0
+)
 
 fetchcontent_declare(
   spdlog
@@ -18,7 +23,9 @@ fetchcontent_makeavailable(fmt)
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 
 fetchcontent_makeavailable(
-  fmt
+  asio
   spdlog
 )
 
+add_library(asio INTERFACE)
+target_include_directories(asio INTERFACE ${asio_SOURCE_DIR}/asio/include)

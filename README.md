@@ -101,11 +101,9 @@ Browse [`examples`](/examples) to learn more about this library.
 Requires: C++ compiler with C++20 standard support and `libibverbs` development headers, asio headers installed.
 
 ```bash
-git clone https://github.com/SJTU/rdmapp && cd rdmapp
-task deps
-task cmake
-task build
-# for more information see go-task. repo config file is at taskfile.yaml
+git clone https://github.com/SJTU-DDST/rdmapp && cd rdmapp
+cmake -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR .
+cmake --build build
 ```
 
 ## Developing

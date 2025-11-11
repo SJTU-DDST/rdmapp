@@ -101,7 +101,7 @@ target_compile_options(rdmapp PRIVATE ${RDMAPP_COMPILE_OPTIONS})
 target_link_libraries(rdmapp PUBLIC ${RDMAPP_LINK_LIBRARIES})
 target_link_libraries(rdmapp PRIVATE fmt spdlog)
 target_include_directories(rdmapp PUBLIC include)
-target_include_directories(rdmapp PUBLIC ${ASIO_INCLUDE})
+target_link_libraries(rdmapp PUBLIC asio)
 
 find_program(iwyu_path NAMES include-what-you-use iwyu)
 if (iwyu_path)
