@@ -149,7 +149,6 @@ if(RDMAPP_BUILD_EXAMPLES)
       rdmapp_py
       examples/helloworld_pybind11.cc
     )
-    target_compile_options(rdmapp_py PRIVATE -fPIC -Wall -Wextra -pedantic)
     target_link_libraries(rdmapp_py PRIVATE rdmapp_examples fmt spdlog)
   endif()
 endif()
