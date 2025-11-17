@@ -103,6 +103,7 @@ Requires: C++ compiler with C++20 standard support and `libibverbs` development 
 ```bash
 git clone https://github.com/SJTU-DDST/rdmapp && cd rdmapp
 cmake -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR .
+# for shared library build, use -DRDMAPP_BUILD_PIC=ON
 cmake --build build
 ```
 

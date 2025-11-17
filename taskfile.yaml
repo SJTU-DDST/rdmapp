@@ -11,6 +11,7 @@ tasks:
         cmake -GNinja "-B{{.BUILD}}" 
         -DCMAKE_CXX_COMPILER=clang++ 
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        -DRDMAPP_BUILD_PIC=ON
         .
   clean:
     desc: clean cmake build

@@ -76,6 +76,12 @@ list(APPEND
   -fno-rtti
   -DASIO_NO_TYPEID
 )
+
+if(RDMAPP_BUILD_PIC)
+  list(APPEND RDMAPP_COMPILE_OPTIONS -fPIC)
+  message("-- [deps] spdlog: using -fPIC for rdmapp")
+endif()
+
 if (RDMAPP_ASAN)
   list(APPEND RDMAPP_COMPILE_OPTIONS PRIVATE -fno-omit-frame-pointer -fsanitize=address)
   list(APPEND RDMAPP_LINK_OPTIONS -fno-omit-frame-pointer -fsanitize=address)

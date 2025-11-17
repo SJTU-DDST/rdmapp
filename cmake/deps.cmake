@@ -1,5 +1,15 @@
 include(FetchContent)
 
+if(RDMAPP_BUILD_EXAMPLES_PYBIND)
+  message("-- [examples] build pybind example: using -fPIC")
+  set(RDMAPP_BUILD_PIC ON)
+endif()
+
+if(RDMAPP_BUILD_PIC)
+  message("-- [deps] spdlog: using -fPIC for spdlog")
+  set(SPDLOG_BUILD_PIC ON)
+endif()
+
 
 fetchcontent_declare(
   asio
@@ -13,14 +23,19 @@ fetchcontent_declare(
   GIT_TAG v1.16.0
 )
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if(RDMAPP_BUILD_PIC)
+  set(CMAKE_PIC_ORIGIN ${CMAKE_POSITION_INDEPENDENT_CODE})
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 fetchcontent_declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
   GIT_TAG 12.0.0
 )
 fetchcontent_makeavailable(fmt)
-set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+if(RDMAPP_BUILD_PIC)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ${CMAKE_PIC_ORIGIN})
+endif()
 
 fetchcontent_makeavailable(
   asio
