@@ -128,6 +128,7 @@ if(RDMAPP_BUILD_EXAMPLES)
     examples/qp_transmission.cc
     examples/qp_acceptor.cc
     examples/qp_connector.cc
+    examples/helloworld_handler.cc
   )
 
   add_library(rdmapp_examples STATIC ${RDMAPP_EXAMPLES_LIB_SOURCE_FILES})
@@ -152,10 +153,11 @@ if(RDMAPP_BUILD_EXAMPLES)
     find_package(pybind11 CONFIG REQUIRED)
     pybind11_add_module(
       rdmapp_py
-      examples/helloworld_pybind11.cc
+      examples/pybind11/helloworld.cc
       examples/qp_transmission.cc
       examples/qp_acceptor.cc
       examples/qp_connector.cc
+      examples/helloworld_handler.cc
     )
 
     # NOTE: must enable RTTI for pybind11!
