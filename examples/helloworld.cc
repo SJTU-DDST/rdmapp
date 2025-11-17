@@ -78,6 +78,10 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
 asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   while (true) {
     auto qp = co_await acceptor->accept();
+    if (!qp) {
+      spdlog::error("server: failed to accept qp, skipped");
+      continue;
+    }
     asio::co_spawn(co_await asio::this_coro::executor, handle_qp(qp),
                    asio::detached);
   }
