@@ -5,6 +5,7 @@
 #include <asio/detached.hpp>
 #include <asio/detail/socket_ops.hpp>
 #include <asio/this_coro.hpp>
+#include <asio/use_future.hpp>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -150,8 +151,10 @@ int main(int argc, char *argv[]) {
   case 3: {
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
-    asio::co_spawn(*io_ctx, client(connector), asio::detached);
+
+    auto fut = asio::co_spawn(*io_ctx, client(connector), asio::use_future);
     io_ctx->run();
+    fut.get();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;
   }
