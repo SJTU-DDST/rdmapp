@@ -155,7 +155,6 @@ int main(int argc, char *argv[]) {
   case 3: {
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
-
     auto fut = asio::co_spawn(*io_ctx, client(connector), asio::use_future);
     io_ctx->run();
     fut.get();
