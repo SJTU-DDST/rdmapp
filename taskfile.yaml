@@ -8,10 +8,10 @@ tasks:
     desc: cmake
     cmds:
       - >
-        cmake -GNinja "-B{{.BUILD}}" 
-        -DCMAKE_CXX_COMPILER=clang++ 
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-        -DRDMAPP_BUILD_PIC=ON
+        echo -e "cmake args:\n$(cat cmake/args)"
+      - >
+        cmake -GNinja "-B{{.BUILD}}"
+        $(cat cmake/args)
         .
   clean:
     desc: clean cmake build
@@ -20,7 +20,7 @@ tasks:
   build:
     desc: build with cmake --build
     cmds:
-      - cmake --build "{{.BUILD}}"
+      - cmake --build "{{.BUILD}}" --parallel $(nproc)
   all:
     desc: cmake and build all targets
     deps:
