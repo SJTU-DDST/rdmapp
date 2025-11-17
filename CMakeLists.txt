@@ -68,6 +68,8 @@ list(APPEND
   -Wall
   -Wextra
   -pedantic
+
+  # for asio-coro only, just disable rtti
   -fno-rtti
   -DASIO_NO_TYPEID
 )
@@ -75,13 +77,16 @@ list(APPEND
   RDMAPP_LINK_OPTIONS
   PUBLIC
   PRIVATE
+
+  # for asio-coro only, just disable rtti
   -fno-rtti
   -DASIO_NO_TYPEID
 )
 
 if(RDMAPP_BUILD_PIC)
   list(APPEND RDMAPP_COMPILE_OPTIONS -fPIC)
-  message("-- [deps] spdlog: using -fPIC for rdmapp")
+  message("-- [rdmapp] build: using -fPIC for rdmapp")
+else()
 endif()
 
 if(RDMAPP_ASAN)
@@ -123,7 +128,6 @@ if(RDMAPP_BUILD_EXAMPLES)
     examples/qp_transmission.cc
     examples/qp_acceptor.cc
     examples/qp_connector.cc
-    examples/qp_connector.cc
   )
 
   add_library(rdmapp_examples STATIC ${RDMAPP_EXAMPLES_LIB_SOURCE_FILES})
@@ -142,14 +146,26 @@ if(RDMAPP_BUILD_EXAMPLES)
   endforeach()
 
   if(RDMAPP_BUILD_EXAMPLES_PYBIND)
+    # NOTE: this is how to configure a pybind cmake project with rdmapp
     message("-- [deps] pybind: looking for pybind11")
     find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
     find_package(pybind11 CONFIG REQUIRED)
     pybind11_add_module(
       rdmapp_py
       examples/helloworld_pybind11.cc
+      examples/qp_transmission.cc
+      examples/qp_acceptor.cc
+      examples/qp_connector.cc
     )
-    target_link_libraries(rdmapp_py PRIVATE rdmapp_examples fmt spdlog)
+
+    # NOTE: must enable RTTI for pybind11!
+    # if -fno-rtti is used for sources in pybind11, there will be really complicated bugs
+    # for example: you could not link rdmapp_py to library:rdampp_examples(which disable ftti).
+    # in the linking stage, it surely will work, but for pybind11 program, there will be really
+    # fucking tricky problems.
+    target_include_directories(rdmapp_py PUBLIC examples/include)
+    target_compile_options(rdmapp_py PRIVATE -Wall -Wextra -pedantic)
+    target_link_libraries(rdmapp_py PRIVATE rdmapp fmt spdlog)
   endif()
 endif()
 
