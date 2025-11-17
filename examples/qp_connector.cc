@@ -42,20 +42,22 @@ qp_connector::from_socket(asio::ip::tcp::socket socket) {
 
 asio::awaitable<std::shared_ptr<qp>> qp_connector::connect() {
   auto executor = co_await asio::this_coro::executor;
+
   asio::ip::tcp::resolver resolver(executor);
   auto endpoints = co_await resolver.async_resolve(
       hostname_, std::to_string(port_), asio::use_awaitable);
-
   if (endpoints.empty()) {
     spdlog::error("connector: failed to resolve: hostname={}", hostname_);
     std::terminate();
   }
+  spdlog::info("connector: resolved hostname: {}",
+               endpoints.begin()->host_name(), port_);
 
   asio::ip::tcp::socket socket(executor);
-  co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
-  co_await socket.async_connect(*endpoints.begin());
-
-  spdlog::info("connector: tcp connected to: {}:{}", hostname_, port_);
+  auto endpoint =
+      co_await asio::async_connect(socket, endpoints, asio::use_awaitable);
+  spdlog::info("connector: tcp connected to: {}:{}",
+               endpoint.address().to_string(), port_);
   auto qp = co_await from_socket(std::move(socket));
   spdlog::info("connector: created qp from tcp connection");
   co_return qp;
