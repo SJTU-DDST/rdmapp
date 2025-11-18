@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(rdmapp CXX)
 set(CMAKE_CXX_STANDARD 20)
 
-include(cmake/deps.cmake)
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(Threads REQUIRED)
 find_package(ibverbs REQUIRED)
@@ -23,6 +21,11 @@ endif()
 
 option(RDMAPP_BUILD_DOCS "Build docs" OFF)
 option(RDMAPP_ASAN "Build with AddressSanitizer" OFF)
+option(RDMAPP_BUILD_EXAMPLES_PYBIND "Build pybind11 example" OFF)
+option(RDMAPP_BUILD_NORTTI "Build without RTTI" ON)
+option(RDMAPP_BUILD_PIC "Build with -fPIC" OFF)
+
+include(cmake/deps.cmake)
 
 if(RDMAPP_BUILD_DOCS)
   # check if Doxygen is installed

@@ -105,7 +105,28 @@ git clone https://github.com/SJTU-DDST/rdmapp && cd rdmapp
 cmake -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR .
 # for shared library build, use -DRDMAPP_BUILD_PIC=ON
 # for pybind11, see examples, use -DRDMAPP_BUILD_EXAMPLES_PYBIND=ON
+# for no RTTI build, use -RDMAPP_BUILD_NORTTI=ON
 cmake --build build
+```
+
+## Using with cmake
+
+```cmake
+include(FetchContent)
+
+fetchcontent_declare(
+  rdmapp
+  GIT_REPOSITORY https://github.com/SJTU-DDST/rdmapp.git
+  GIT_TAG asio-coro
+  GIT_SHALLOW 1
+)
+fetchcontent_makeavailable(rdmapp)
+
+set(RDMAPP_BUILD_PIC ON) # for shared library like pybind
+set(RDMAPP_BUILD_NORTTI OFF) # pybind11 needs RTTI
+set(RDMAPP_BUILD_EXAMPLES OFF) # for not building examples
+
+target_link_libraries(your_target PUBLIC rdmapp)
 ```
 
 ## Developing

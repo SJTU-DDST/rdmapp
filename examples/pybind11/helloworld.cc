@@ -35,6 +35,9 @@ public:
   }
 
   void run_server(uint16_t port) {
+    // NOTE: for SIGINT handling like CTRL+C
+    // reference:
+    // https://pybind11.readthedocs.io/en/stable/faq.html#how-can-i-properly-handle-ctrl-c-in-long-running-functions
     auto work_guard = asio::make_work_guard(*io_ctx_);
     auto acceptor =
         std::make_shared<rdmapp::qp_acceptor>(io_ctx_, port, pd_, cq_);
