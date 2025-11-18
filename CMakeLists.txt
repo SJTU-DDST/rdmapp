@@ -63,25 +63,21 @@ add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 
 list(APPEND
   RDMAPP_COMPILE_OPTIONS
-  PUBLIC
   PRIVATE
   -Wall
   -Wextra
   -pedantic
-
-  # for asio-coro only, just disable rtti
-  -fno-rtti
-  -DASIO_NO_TYPEID
 )
 list(APPEND
   RDMAPP_LINK_OPTIONS
-  PUBLIC
   PRIVATE
-
-  # for asio-coro only, just disable rtti
-  -fno-rtti
-  -DASIO_NO_TYPEID
 )
+if(RDMAPP_BUILD_NORTTI)
+  message("-- [rdmapp] build: build with -fno-rtti")
+  list(APPEND RDMAPP_COMPILE_OPTIONS PUBLIC -fno-rtti -DASIO_NO_TYPEID)
+else()
+  message("-- [rdmapp] build: build with RTTI")
+endif()
 
 if(RDMAPP_BUILD_PIC)
   list(APPEND RDMAPP_COMPILE_OPTIONS -fPIC)
