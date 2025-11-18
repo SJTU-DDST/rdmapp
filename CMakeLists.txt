@@ -111,7 +111,7 @@ endif()
 
 target_compile_options(rdmapp PRIVATE ${RDMAPP_COMPILE_OPTIONS})
 target_link_libraries(rdmapp PUBLIC ${RDMAPP_LINK_LIBRARIES})
-target_link_libraries(rdmapp PRIVATE fmt spdlog)
+target_link_libraries(rdmapp PUBLIC fmt spdlog)
 target_include_directories(rdmapp PUBLIC include)
 target_link_libraries(rdmapp PUBLIC asio)
 
@@ -134,7 +134,6 @@ if(RDMAPP_BUILD_EXAMPLES)
   target_compile_options(rdmapp_examples ${RDMAPP_COMPILE_OPTIONS})
   target_include_directories(rdmapp_examples PUBLIC examples/include)
   target_link_libraries(rdmapp_examples PUBLIC rdmapp)
-  target_link_libraries(rdmapp_examples PRIVATE fmt spdlog)
   target_link_options(rdmapp_examples ${RDMAPP_LINK_OPTIONS})
   set(RDMAPP_EXAMPLES helloworld send_bw write_bw rpc)
 
@@ -166,7 +165,7 @@ if(RDMAPP_BUILD_EXAMPLES)
     # fucking tricky problems.
     target_include_directories(rdmapp_py PUBLIC examples/include)
     target_compile_options(rdmapp_py PRIVATE -Wall -Wextra -pedantic)
-    target_link_libraries(rdmapp_py PRIVATE rdmapp fmt spdlog)
+    target_link_libraries(rdmapp_py PRIVATE rdmapp)
   endif()
 endif()
 

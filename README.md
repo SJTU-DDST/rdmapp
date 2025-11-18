@@ -114,17 +114,18 @@ cmake --build build
 ```cmake
 include(FetchContent)
 
+set(RDMAPP_BUILD_PIC ON) # for shared library like pybind
+set(RDMAPP_BUILD_NORTTI OFF) # pybind11 needs RTTI
+set(RDMAPP_BUILD_EXAMPLES OFF) # for not building examples
+
 fetchcontent_declare(
   rdmapp
   GIT_REPOSITORY https://github.com/SJTU-DDST/rdmapp.git
   GIT_TAG asio-coro
   GIT_SHALLOW 1
 )
-fetchcontent_makeavailable(rdmapp)
 
-set(RDMAPP_BUILD_PIC ON) # for shared library like pybind
-set(RDMAPP_BUILD_NORTTI OFF) # pybind11 needs RTTI
-set(RDMAPP_BUILD_EXAMPLES OFF) # for not building examples
+fetchcontent_makeavailable(rdmapp)
 
 target_link_libraries(your_target PUBLIC rdmapp)
 ```
