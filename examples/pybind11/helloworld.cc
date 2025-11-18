@@ -25,13 +25,13 @@ namespace py = pybind11;
 class RDMAApp {
 public:
   RDMAApp() {
-    spdlog::set_level(spdlog::level::trace);
+    spdlog::set_level(spdlog::level::debug);
     device_ = std::make_shared<rdmapp::device>(0, 1);
     pd_ = std::make_shared<rdmapp::pd>(device_);
     cq_ = std::make_shared<rdmapp::cq>(device_);
-    io_ctx_ = std::make_shared<asio::io_context>(4);
+    io_ctx_ = std::make_shared<asio::io_context>(1);
     executor_ = std::make_shared<rdmapp::executor>(io_ctx_);
-    cq_poller_ = std::make_shared<rdmapp::cq_poller>(cq_, executor_);
+    cq_poller_ = std::make_unique<rdmapp::cq_poller>(cq_, executor_);
   }
 
   void run_server(uint16_t port) {
@@ -57,7 +57,7 @@ private:
   std::shared_ptr<rdmapp::cq> cq_;
   std::shared_ptr<asio::io_context> io_ctx_;
   std::shared_ptr<rdmapp::executor> executor_;
-  std::shared_ptr<rdmapp::cq_poller> cq_poller_;
+  std::unique_ptr<rdmapp::cq_poller> cq_poller_;
 };
 
 PYBIND11_MODULE(rdmapp_py, m) {
