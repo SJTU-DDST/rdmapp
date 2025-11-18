@@ -2,7 +2,6 @@
 
 #include <asio/io_context.hpp>
 #include <functional>
-#include <iterator>
 
 #include <infiniband/verbs.h>
 
@@ -22,7 +21,7 @@ public:
   /**
    * @brief Construct a new executor object
    *
-   * @param nr_worker The number of worker threads to use.
+   * @param io_context io_context of asio for wc process and callback execute
    */
   executor(std::shared_ptr<asio::io_context> io_context);
 

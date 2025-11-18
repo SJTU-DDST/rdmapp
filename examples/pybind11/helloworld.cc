@@ -16,7 +16,6 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-#include "rdmapp/mr.h"
 #include <rdmapp/executor.h>
 #include <rdmapp/rdmapp.h>
 
