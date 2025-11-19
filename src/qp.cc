@@ -433,10 +433,10 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
   return asio::async_compose<decltype(asio::use_awaitable), void(send_result)>(
       [awaitable = std::shared_ptr<send_awaitable>(std::move(awaitable))](
           auto &&self) mutable {
-        std::weak_ptr<send_awaitable> awaitable_local = awaitable;
+        std::shared_ptr<send_awaitable> awaitable_ptr = awaitable;
 
         auto callback = executor::make_callback(
-            [awaitable = awaitable_local.lock(),
+            [awaitable = awaitable_ptr,
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
               spdlog::trace("send_awaitable start resume");
@@ -446,12 +446,6 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
               self->complete(awaitable->resume());
             });
 
-        auto awaitable_ptr = awaitable_local.lock();
-        if (!awaitable_ptr) {
-          spdlog::critical(
-              "send_awaitable: should not fail to lock shared_ptr");
-          std::terminate();
-        }
         awaitable_ptr->suspend(callback);
         spdlog::trace("send_awaitable: suspended: callback={}",
                       fmt::ptr(callback));
@@ -466,12 +460,12 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
           auto &&self) mutable {
         spdlog::trace("recv_awaitable: fn start");
         // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
-        std::weak_ptr<recv_awaitable> awaitable_local = awaitable;
+        std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
 
         auto callback = executor::make_callback(
             // NOTE: 注意之类的捕获顺序,
-            // 如果先捕获self那就awaitable就完蛋了被move走了
-            [awaitable = awaitable_local.lock(),
+            // 如果先捕获self那就awaitable就被move走了
+            [awaitable = awaitable_ptr,
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
               spdlog::trace("recv_awaitable start resume");
@@ -481,14 +475,6 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
               self->complete(awaitable->resume());
             });
 
-        // NOTE:
-        // 此时weak_ptr的view建立在另一(或多个)个线程(executor那边)持有的callback之中
-        // 在suspend开始之前, 当前view必然是持有的
-        auto awaitable_ptr = awaitable_local.lock();
-        if (!awaitable_ptr) {
-          spdlog::critical("should not fail to lock shared_ptr");
-          std::terminate();
-        }
         awaitable_ptr->suspend(callback);
         spdlog::trace("recv_awaitable: suspended: callback={}",
                       fmt::ptr(callback));
