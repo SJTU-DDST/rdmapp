@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(4);
   auto executor = std::make_shared<rdmapp::executor>(io_ctx);
-  auto cq_poller = std::make_shared<rdmapp::cq_poller>(cq, executor);
+  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq, executor);
 
   switch (argc) {
   case 2: {
