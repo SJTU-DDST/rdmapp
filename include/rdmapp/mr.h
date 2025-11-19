@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include <infiniband/verbs.h>
@@ -99,6 +100,10 @@ public:
    * @return uint32_t The local key of the memory region.
    */
   uint32_t lkey() const;
+
+  std::span<std::byte const> span() const;
+
+  std::span<std::byte> span();
 };
 
 /**
@@ -156,6 +161,10 @@ public:
    * @return uint32_t The remote key of the memory region.
    */
   uint32_t rkey();
+
+  std::span<std::byte const> span() const;
+
+  std::span<std::byte> span();
 
   /**
    * @brief Deserialize a remote memory region handle.

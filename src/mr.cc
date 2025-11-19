@@ -54,6 +54,14 @@ uint32_t local_mr::rkey() const { return mr_->rkey; }
 
 uint32_t local_mr::lkey() const { return mr_->lkey; }
 
+std::span<std::byte const> local_mr::span() const {
+  return std::span<std::byte>(static_cast<std::byte *>(mr_->addr), mr_->length);
+}
+
+std::span<std::byte> local_mr::span() {
+  return std::span<std::byte>(static_cast<std::byte *>(mr_->addr), mr_->length);
+}
+
 remote_mr::mr(void *addr, uint32_t length, uint32_t rkey)
     : addr_(addr), length_(length), rkey_(rkey) {}
 
@@ -62,5 +70,13 @@ void *remote_mr::addr() { return addr_; }
 uint32_t remote_mr::length() { return length_; }
 
 uint32_t remote_mr::rkey() { return rkey_; }
+
+std::span<std::byte const> remote_mr::span() const {
+  return std::span<std::byte>(static_cast<std::byte *>(addr_), length_);
+}
+
+std::span<std::byte> remote_mr::span() {
+  return std::span<std::byte>(static_cast<std::byte *>(addr_), length_);
+}
 
 } // namespace rdmapp
