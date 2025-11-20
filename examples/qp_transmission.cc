@@ -40,14 +40,12 @@ recv_qp(asio::ip::tcp::socket &socket) {
   remote_qp.user_data.resize(remote_qp.header.user_data_size);
 
   if (remote_qp.header.user_data_size > 0) {
-    std::vector<uint8_t> user_data(remote_qp.header.user_data_size);
-    auto buffer = asio::buffer(user_data);
+    auto buffer = asio::buffer(remote_qp.user_data);
 
     auto nbytes = co_await asio::async_read(socket, buffer);
     spdlog::debug("read userdata: bytes={} expected={}", nbytes, buffer.size());
   }
-  spdlog::debug("received user data: bytes={}",
-                remote_qp.header.user_data_size);
+  spdlog::debug("received user data: bytes={}", remote_qp.user_data.size());
   co_return remote_qp;
 }
 
