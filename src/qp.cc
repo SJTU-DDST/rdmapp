@@ -200,8 +200,9 @@ void qp::post_recv(struct ibv_recv_wr const &recv_wr,
 
 void qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
                       struct ibv_recv_wr *&bad_recv_wr) const {
-  spdlog::trace("post recv wr_id={:#x} addr={:#x}", recv_wr.wr_id,
-                recv_wr.sg_list->addr);
+  spdlog::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
+                fmt::ptr(recv_wr.sg_list),
+                recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
   check_rc(::ibv_post_recv(qp_, const_cast<struct ibv_recv_wr *>(&recv_wr),
                            &bad_recv_wr),
            "failed to post recv");
