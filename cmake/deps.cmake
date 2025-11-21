@@ -1,18 +1,5 @@
 include(FetchContent)
 
-if(RDMAPP_BUILD_EXAMPLES_PYBIND)
-  message("-- [examples] build pybind example: using -fPIC")
-  set(RDMAPP_BUILD_PIC ON)
-  message("-- [examples] build pybind example: using RTTI")
-  set(RDMAPP_BUILD_NORTTI OFF)
-endif()
-
-if(RDMAPP_BUILD_PIC)
-  message("-- [deps] spdlog: using -fPIC for spdlog")
-  set(SPDLOG_BUILD_PIC ON)
-endif()
-
-
 fetchcontent_declare(
   asio
   GIT_REPOSITORY git@github.com:chriskohlhoff/asio.git

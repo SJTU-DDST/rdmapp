@@ -17,6 +17,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   option(RDMAPP_BUILD_EXAMPLES "Build examples" ON)
 else()
   option(RDMAPP_BUILD_EXAMPLES "Build examples" OFF)
+  message(STATUS "[rdmapp] rdmapp is imported as subdirectory")
 endif()
 
 option(RDMAPP_BUILD_DOCS "Build docs" OFF)
@@ -24,6 +25,35 @@ option(RDMAPP_ASAN "Build with AddressSanitizer" OFF)
 option(RDMAPP_BUILD_EXAMPLES_PYBIND "Build pybind11 example" OFF)
 option(RDMAPP_BUILD_NORTTI "Build without RTTI" ON)
 option(RDMAPP_BUILD_PIC "Build with -fPIC" OFF)
+
+function(print_options_compact)
+  message(STATUS "[rdmapp] config:")
+  message(STATUS "  RDMAPP_BUILD_DOCS: ${RDMAPP_BUILD_DOCS}")
+  message(STATUS "  RDMAPP_ASAN: ${RDMAPP_ASAN}")
+  message(STATUS "  RDMAPP_BUILD_EXAMPLES: ${RDMAPP_BUILD_EXAMPLES}")
+  message(STATUS "  RDMAPP_BUILD_EXAMPLES_PYBIND: ${RDMAPP_BUILD_EXAMPLES_PYBIND}")
+  message(STATUS "  RDMAPP_BUILD_NORTTI: ${RDMAPP_BUILD_NORTTI}")
+  message(STATUS "  RDMAPP_BUILD_PIC: ${RDMAPP_BUILD_PIC}")
+endfunction()
+
+if(RDMAPP_BUILD_EXAMPLES_PYBIND)
+  message(STATUS "[rdmapp/deps] pybind: looking for pybind11")
+  find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+  find_package(pybind11 CONFIG REQUIRED)
+
+  message(STATUS "[rdmapp/examples] build pybind example: using -fPIC")
+  set(RDMAPP_BUILD_PIC ON)
+
+  message(STATUS "[rdmapp/examples] build pybind example: using RTTI")
+  set(RDMAPP_BUILD_NORTTI OFF)
+endif()
+
+if(RDMAPP_BUILD_PIC)
+  message(STATUS "[rdmapp/deps] spdlog: using -fPIC for spdlog")
+  set(SPDLOG_BUILD_PIC ON)
+endif()
+
+print_options_compact()
 
 include(cmake/deps.cmake)
 
@@ -76,15 +106,15 @@ list(APPEND
   PRIVATE
 )
 if(RDMAPP_BUILD_NORTTI)
-  message("-- [rdmapp] build: build with -fno-rtti")
+  message(STATUS "[rdmapp] build: build with -fno-rtti and disable asio typeid")
   list(APPEND RDMAPP_COMPILE_OPTIONS PUBLIC -fno-rtti -DASIO_NO_TYPEID)
 else()
-  message("-- [rdmapp] build: build with RTTI")
+  message(STATUS "[rdmapp] build: build with RTTI")
 endif()
 
 if(RDMAPP_BUILD_PIC)
   list(APPEND RDMAPP_COMPILE_OPTIONS -fPIC)
-  message("-- [rdmapp] build: using -fPIC for rdmapp")
+  message(STATUS "[rdmapp] build: using -fPIC for rdmapp")
 else()
 endif()
 
@@ -118,7 +148,7 @@ target_link_libraries(rdmapp PUBLIC asio)
 find_program(iwyu_path NAMES include-what-you-use iwyu)
 
 if(iwyu_path)
-  message("-- Using include-what-you-use ${iwyu_path}")
+  message(STATUS "Using include-what-you-use ${iwyu_path}")
   set_property(TARGET rdmapp PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
 endif()
 
@@ -146,9 +176,6 @@ if(RDMAPP_BUILD_EXAMPLES)
 
   if(RDMAPP_BUILD_EXAMPLES_PYBIND)
     # NOTE: this is how to configure a pybind cmake project with rdmapp
-    message("-- [deps] pybind: looking for pybind11")
-    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-    find_package(pybind11 CONFIG REQUIRED)
     pybind11_add_module(
       rdmapp_py
       examples/pybind11/helloworld.cc
