@@ -24,8 +24,6 @@ void cq_poller::worker(std::stop_token token) {
   while (!token.stop_requested()) {
     try {
       auto nr_wc = cq_->poll(wc_vec_);
-      if (nr_wc == 0)
-        std::this_thread::yield();
       for (size_t i = 0; i < nr_wc; ++i) {
         auto &wc = wc_vec_[i];
         spdlog::trace("polled cqe wr_id={:#x} status={}", wc.wr_id,
