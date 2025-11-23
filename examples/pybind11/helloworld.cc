@@ -16,7 +16,6 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-#include <rdmapp/executor.h>
 #include <rdmapp/rdmapp.h>
 
 namespace py = pybind11;
@@ -29,8 +28,7 @@ public:
     pd_ = std::make_shared<rdmapp::pd>(device_);
     cq_ = std::make_shared<rdmapp::cq>(device_);
     io_ctx_ = std::make_shared<asio::io_context>(1);
-    executor_ = std::make_shared<rdmapp::executor>(io_ctx_);
-    cq_poller_ = std::make_unique<rdmapp::cq_poller>(cq_, executor_);
+    cq_poller_ = std::make_unique<rdmapp::cq_poller>(cq_);
   }
 
   void run_server(uint16_t port) {

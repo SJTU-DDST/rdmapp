@@ -12,10 +12,8 @@
 
 namespace rdmapp {
 
-cq_poller::cq_poller(std::shared_ptr<cq> cq, std::shared_ptr<executor> executor,
-                     size_t batch_size)
-    : cq_(cq), poller_thread_(&cq_poller::worker, this), executor_(executor),
-      wc_vec_(batch_size) {}
+cq_poller::cq_poller(std::shared_ptr<cq> cq, size_t batch_size)
+    : cq_(cq), poller_thread_(&cq_poller::worker, this), wc_vec_(batch_size) {}
 
 cq_poller::~cq_poller() {}
 
@@ -28,7 +26,7 @@ void cq_poller::worker(std::stop_token token) {
         auto &wc = wc_vec_[i];
         spdlog::trace("polled cqe wr_id={:#x} status={}", wc.wr_id,
                       static_cast<int>(wc.status));
-        executor_->process_wc(wc);
+        executor_.process_wc(wc);
       }
     } catch (std::runtime_error &e) {
       spdlog::error(e.what());

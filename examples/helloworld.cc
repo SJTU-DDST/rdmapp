@@ -12,7 +12,6 @@
 #include <string>
 
 #include "rdmapp/mr.h"
-#include <rdmapp/executor.h>
 #include <rdmapp/rdmapp.h>
 
 int main(int argc, char *argv[]) {
@@ -21,8 +20,7 @@ int main(int argc, char *argv[]) {
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(1);
-  auto executor = std::make_shared<rdmapp::executor>(io_ctx);
-  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq, executor);
+  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
   switch (argc) {
   case 2: {

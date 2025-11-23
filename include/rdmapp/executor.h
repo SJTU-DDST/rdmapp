@@ -1,6 +1,5 @@
 #pragma once
 
-#include <asio/io_context.hpp>
 #include <functional>
 
 #include <infiniband/verbs.h>
@@ -12,7 +11,6 @@ namespace rdmapp {
  *
  */
 class executor {
-  std::shared_ptr<asio::io_context> io_ctx_;
 
 public:
   using callback_fn = std::function<void(struct ibv_wc const &wc)>;
@@ -20,10 +18,8 @@ public:
 
   /**
    * @brief Construct a new executor object
-   *
-   * @param io_context io_context of asio for wc process and callback execute
    */
-  executor(std::shared_ptr<asio::io_context> io_context);
+  executor();
 
   /**
    * @brief Process a completion entry.

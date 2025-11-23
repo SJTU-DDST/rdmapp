@@ -1,12 +1,10 @@
 #include "rdmapp/executor.h"
 
 #include <asio/post.hpp>
-#include <memory>
 #include <spdlog/spdlog.h>
 
 namespace rdmapp {
-executor::executor(std::shared_ptr<asio::io_context> io_context)
-    : io_ctx_(std::move(io_context)) {}
+executor::executor() {}
 
 void executor::process_wc(struct ibv_wc const &wc) {
   spdlog::trace("process_wc: {:#x}", wc.wr_id);
