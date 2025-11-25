@@ -748,12 +748,24 @@ void qp::destroy() {
   if (qp_ == nullptr) [[unlikely]] {
     return;
   }
-
+  err();
   if (auto rc = ::ibv_destroy_qp(qp_); rc != 0) [[unlikely]] {
     spdlog::error("failed to destroy qp {}: {}", fmt::ptr(qp_),
                   strerror(errno));
   } else {
     spdlog::trace("destroyed qp {}", fmt::ptr(qp_));
+  }
+}
+
+void qp::err() {
+  struct ibv_qp_attr attr{};
+  attr.qp_state = IBV_QPS_ERR;
+
+  if (ibv_modify_qp(qp_, &attr, IBV_QP_STATE)) {
+    spdlog::error("failed to modify qp({}) to ERROR, error: {}\n",
+                  fmt::ptr(qp_), strerror(errno));
+  } else {
+    spdlog::trace("qp({}) set to ERORR", fmt::ptr(qp_));
   }
 }
 

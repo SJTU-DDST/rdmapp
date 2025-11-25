@@ -545,6 +545,12 @@ public:
    */
   void rts();
 
+  /**
+   * @brief This function transitions the Queue Pair to the ERROR state.
+   *
+   */
+  void err();
+
 private:
   /**
    * @brief This function posts a recv request on the Queue Pair's own RQ.
