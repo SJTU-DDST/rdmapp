@@ -441,8 +441,6 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
               spdlog::trace("send_awaitable start resume");
-              spdlog::trace("send_awaitable in resume: {}",
-                            awaitable.use_count());
               awaitable->wc_ = wc;
               self->complete(awaitable->resume());
             });
@@ -470,8 +468,6 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
               spdlog::trace("recv_awaitable start resume");
-              spdlog::trace("recv_awaitable in resume: {}",
-                            awaitable.use_count());
               awaitable->wc_ = wc;
               self->complete(awaitable->resume());
             });
