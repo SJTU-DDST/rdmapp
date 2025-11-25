@@ -1,6 +1,5 @@
 #include "rdmapp/pd.h"
 
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <spdlog/spdlog.h>

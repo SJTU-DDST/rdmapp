@@ -1,6 +1,5 @@
 #include "rdmapp/executor.h"
 
-#include <asio/post.hpp>
 #include <spdlog/spdlog.h>
 
 namespace rdmapp {

@@ -1,7 +1,6 @@
 #include "rdmapp/cq.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstring>
 #include <spdlog/spdlog.h>
 #include <vector>

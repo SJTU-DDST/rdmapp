@@ -1,8 +1,8 @@
 #include "rdmapp/device.h"
 
+#include <cstdio>
 #include <cassert>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <spdlog/spdlog.h>

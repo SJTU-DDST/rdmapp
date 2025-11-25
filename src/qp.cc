@@ -1,26 +1,20 @@
 #include "rdmapp/qp.h"
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <asio/awaitable.hpp>
 #include <asio/compose.hpp>
 #include <asio/use_awaitable.hpp>
 #include <cassert>
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
-#include <endian.h>
 #include <exception>
 #include <iterator>
 #include <memory>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <strings.h>
-#include <sys/socket.h>
 #include <utility>
 #include <vector>
 
