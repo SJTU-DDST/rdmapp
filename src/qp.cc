@@ -36,6 +36,11 @@
 
 namespace rdmapp {
 
+static std::span<std::byte> remove_const(std::span<std::byte const> buffer) {
+  return std::span<std::byte>(const_cast<std::byte *>(buffer.data()),
+                              buffer.size());
+}
+
 std::atomic<uint32_t> qp::next_sq_psn = 1;
 qp::qp(uint16_t remote_lid, uint32_t remote_qpn, uint32_t remote_psn,
        union ibv_gid remote_gid, std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
@@ -216,81 +221,45 @@ void qp::post_recv_srq(struct ibv_recv_wr const &recv_wr,
            "failed to post srq recv");
 }
 
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
-                                   size_t length, enum ibv_wr_opcode opcode)
-    : qp_(qp),
-      local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
+qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
+                                   std::span<std::byte> buffer,
+                                   enum ibv_wr_opcode opcode)
+    : qp_(qp), local_mr_(std::make_shared<local_mr>(
+                   qp_->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_(), wc_(), opcode_(opcode) {}
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
-                                   size_t length, enum ibv_wr_opcode opcode,
-                                   remote_mr const &remote_mr)
-    : qp_(qp),
-      local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      local_mr_view_(*local_mr_), remote_mr_(remote_mr), opcode_(opcode) {}
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
-                                   size_t length, enum ibv_wr_opcode opcode,
-                                   remote_mr const &remote_mr, uint32_t imm)
-    : qp_(qp),
-      local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      local_mr_view_(*local_mr_), remote_mr_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
-                                   size_t length, enum ibv_wr_opcode opcode,
-                                   remote_mr const &remote_mr, uint64_t add)
-    : qp_(qp),
-      local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(add),
-      opcode_(opcode) {}
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
-                                   size_t length, enum ibv_wr_opcode opcode,
-                                   remote_mr const &remote_mr, uint64_t compare,
-                                   uint64_t swap)
-    : qp_(qp),
-      local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(compare),
-      swap_(swap), opcode_(opcode) {}
-
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::span<std::byte> buffer,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr)
-    : send_awaitable(qp, buffer.data(), buffer.size(), opcode, remote_mr) {}
+    : qp_(qp), local_mr_(std::make_shared<local_mr>(
+                   qp_->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
-                                   std::span<const std::byte> data,
-                                   enum ibv_wr_opcode opcode)
-    : send_awaitable(qp,
-                     const_cast<void *>(static_cast<const void *>(data.data())),
-                     data.size(), opcode) {}
-
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
-                                   std::span<const std::byte> data,
-                                   enum ibv_wr_opcode opcode,
-                                   remote_mr const &remote_mr)
-    : send_awaitable(qp,
-                     const_cast<void *>(static_cast<const void *>(data.data())),
-                     data.size(), opcode, remote_mr) {}
-
-qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
-                                   std::span<const std::byte> data,
+                                   std::span<std::byte> buffer,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint32_t imm)
-    : send_awaitable(qp,
-                     const_cast<void *>(static_cast<const void *>(data.data())),
-                     data.size(), opcode, remote_mr, imm) {}
-
+    : qp_(qp), local_mr_(std::make_shared<local_mr>(
+                   qp_->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), imm_(imm),
+      opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
-                                   std::span<std::byte> data,
+                                   std::span<std::byte> buffer,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint64_t add)
-    : send_awaitable(qp, data.data(), data.size(), opcode, remote_mr, add) {}
-
+    : qp_(qp), local_mr_(std::make_shared<local_mr>(
+                   qp_->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(add),
+      opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
-                                   std::span<std::byte> data,
+                                   std::span<std::byte> buffer,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint64_t compare,
                                    uint64_t swap)
-    : send_awaitable(qp, static_cast<void *>(data.data()), data.size(), opcode,
-                     remote_mr, compare, swap) {}
+    : qp_(qp), local_mr_(std::make_shared<local_mr>(
+                   qp_->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(compare),
+      swap_(swap), opcode_(opcode) {}
+
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
                                    enum ibv_wr_opcode opcode)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_(), wc_(), opcode_(opcode) {}
@@ -478,15 +447,16 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
 }
 
 asio::awaitable<qp::send_result> qp::send(std::span<std::byte const> buffer) {
-  auto awaitable = std::make_unique<send_awaitable>(this->shared_from_this(),
-                                                    buffer, IBV_WR_SEND);
+  auto awaitable = std::make_unique<send_awaitable>(
+      this->shared_from_this(), remove_const(buffer), IBV_WR_SEND);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 asio::awaitable<qp::send_result>
 qp::write(remote_mr const &remote_mr, std::span<std::byte const> const buffer) {
   auto awaitable = std::make_unique<send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_RDMA_WRITE, remote_mr);
+      this->shared_from_this(), remove_const(buffer), IBV_WR_RDMA_WRITE,
+      remote_mr);
   return make_asio_awaitable(std::move(awaitable));
 }
 
@@ -494,8 +464,8 @@ asio::awaitable<qp::send_result>
 qp::write_with_imm(remote_mr const &remote_mr,
                    std::span<std::byte const> buffer, uint32_t imm) {
   auto awaitable = std::make_unique<qp::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr,
-      imm);
+      this->shared_from_this(), remove_const(buffer),
+      IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
   return make_asio_awaitable(std::move(awaitable));
 }
 

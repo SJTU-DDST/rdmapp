@@ -115,20 +115,6 @@ public:
     const enum ibv_wr_opcode opcode_;
 
   public:
-    send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
-                   enum ibv_wr_opcode opcode);
-    send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
-                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr);
-    send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
-                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
-                   uint32_t imm);
-    send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
-                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
-                   uint64_t add);
-    send_awaitable(std::shared_ptr<qp> qp, void *buffer, size_t length,
-                   enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
-                   uint64_t compare, uint64_t swap);
-
     send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode);
     send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
@@ -143,18 +129,15 @@ public:
                    enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
                    uint64_t compare, uint64_t swap);
 
-    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const> buffer,
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode); // send
-    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const> buffer,
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode,
                    remote_mr const &remote_mr); // write
-    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte const> buffer,
+    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
                    uint32_t imm); // write with imm
 
-    send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
-                   enum ibv_wr_opcode opcode,
-                   remote_mr const &remote_mr); // read
     send_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, remote_mr const &remote_mr,
                    uint64_t add); // fetch and add
