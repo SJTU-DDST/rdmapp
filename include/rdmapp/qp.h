@@ -274,7 +274,7 @@ public:
    * @brief This method sends local buffer to remote. The address will be
    * registered as a memory region first and then deregistered upon completion.
    *
-   * @param buffer Pointer to local buffer. It should be valid until completion.
+   * @param buffer span to local buffer. It should be valid until completion.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
   [[nodiscard]] asio::awaitable<send_result>
@@ -286,8 +286,7 @@ public:
    * upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until completion.
-   * @param length The length of the local buffer.
+   * @param buffer span to local buffer. It should be valid until completion.
    * @return send_awaitable A coroutine returning length of the data written.
    */
   [[nodiscard]] asio::awaitable<send_result>
@@ -299,9 +298,8 @@ public:
    * first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until
+   * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @param length The length of the local buffer.
    * @param imm The immediate value.
    * @return send_awaitable A coroutine returning length of the data written.
    */
@@ -315,9 +313,8 @@ public:
    * deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until
+   * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @param length The length of the local buffer.
    * @return send_awaitable A coroutine returning length of the data read.
    */
   [[nodiscard]] asio::awaitable<send_result> read(remote_mr const &remote_mr,
@@ -329,9 +326,8 @@ public:
    * memory region first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until
+   * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @param length The length of the local buffer.
    * @param add The delta.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
@@ -345,9 +341,8 @@ public:
    * memory region first and then deregistered upon completion.
    *
    * @param remote_mr Remote memory region handle.
-   * @param buffer Pointer to local buffer. It should be valid until
+   * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @param length The length of the local buffer.
    * @param compare The expected old value.
    * @param swap The desired new value.
    * @return send_awaitable A coroutine returning length of the data sent.
@@ -360,9 +355,8 @@ public:
    * @brief This method posts a recv request on the queue pair. The buffer
    * will be filled with data received. The local buffer will be registered as
    * a memory region first and then deregistered upon completion.
-   * @param buffer Pointer to local buffer. It should be valid until
+   * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @param length The length of the local buffer.
    * @return recv_awaitable A coroutine returning std::pair<uint32_t,
    * std::optional<uint32_t>>, with first indicating the length of received
    * data, and second indicating the immediate value if any.
@@ -372,8 +366,8 @@ public:
   /**
    * @brief This function sends a registered local memory region to remote.
    *
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
   [[nodiscard]] asio::awaitable<send_result> send(mr_view local_mr);
@@ -382,7 +376,8 @@ public:
    * @brief This function writes a registered local memory region to remote.
    *
    * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, whose lifetime is
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * controlled by a smart pointer.
    * @return send_awaitable A coroutine returning length of the data written.
    */
@@ -394,8 +389,8 @@ public:
    * with an immediate value.
    *
    * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @param imm The immediate value.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
@@ -406,8 +401,8 @@ public:
    * @brief This function reads to local memory region from remote.
    *
    * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @return send_awaitable A coroutine returning length of the data read.
    */
   [[nodiscard]] asio::awaitable<send_result> read(remote_mr const &remote_mr,
@@ -418,8 +413,8 @@ public:
    * given remote memory region.
    *
    * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @param add The delta.
    * @return send_awaitable A coroutine returning length of the data sent.
    */
@@ -431,8 +426,8 @@ public:
    * given remote memory region.
    *
    * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @param compare The expected old value.
    * @param swap The desired new value.
    * @return send_awaitable A coroutine returning length of the data sent.
@@ -445,8 +440,8 @@ public:
    * @brief This function posts a recv request on the queue pair. The buffer
    * will be filled with data received.
    *
-   * @param local_mr Registered local memory region, whose lifetime is
-   * controlled by a smart pointer.
+   * @param local_mr Registered local memory region, which should be valid until
+   * completion.
    * @return recv_awaitable A coroutine returning std::pair<uint32_t,
    * std::optional<uint32_t>>, with first indicating the length of received
    * data, and second indicating the immediate value if any.
