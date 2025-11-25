@@ -220,33 +220,35 @@ qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length, enum ibv_wr_opcode opcode)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      remote_mr_(), wc_(), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_(), wc_(), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length, enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      remote_mr_(remote_mr), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length, enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint32_t imm)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      remote_mr_(remote_mr), imm_(imm), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), imm_(imm),
+      opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length, enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint64_t add)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      remote_mr_(remote_mr), compare_add_(add), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(add),
+      opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length, enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint64_t compare,
                                    uint64_t swap)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      remote_mr_(remote_mr), compare_add_(compare), swap_(swap),
-      opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_(remote_mr), compare_add_(compare),
+      swap_(swap), opcode_(opcode) {}
 
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::span<std::byte> buffer,
@@ -292,34 +294,37 @@ qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr,
                                    enum ibv_wr_opcode opcode)
-    : qp_(qp), local_mr_(local_mr), remote_mr_(), wc_(), opcode_(opcode) {}
+    : qp_(qp), local_mr_(local_mr), local_mr_view_(*local_mr_), remote_mr_(),
+      wc_(), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr)
-    : qp_(qp), local_mr_(local_mr), remote_mr_(remote_mr), opcode_(opcode) {}
+    : qp_(qp), local_mr_(local_mr), local_mr_view_(*local_mr_),
+      remote_mr_(remote_mr), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint32_t imm)
-    : qp_(qp), local_mr_(local_mr), remote_mr_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
+    : qp_(qp), local_mr_(local_mr), local_mr_view_(*local_mr_),
+      remote_mr_(remote_mr), imm_(imm), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr, uint64_t add)
-    : qp_(qp), local_mr_(local_mr), remote_mr_(remote_mr), compare_add_(add),
-      opcode_(opcode) {}
+    : qp_(qp), local_mr_(local_mr), local_mr_view_(*local_mr_),
+      remote_mr_(remote_mr), compare_add_(add), opcode_(opcode) {}
 qp::send_awaitable::send_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr,
                                    enum ibv_wr_opcode opcode,
                                    remote_mr const &remote_mr,
 
                                    uint64_t compare, uint64_t swap)
-    : qp_(qp), local_mr_(local_mr), remote_mr_(remote_mr),
-      compare_add_(compare), swap_(swap), opcode_(opcode) {}
+    : qp_(qp), local_mr_(local_mr), local_mr_view_(*local_mr_),
+      remote_mr_(remote_mr), compare_add_(compare), swap_(swap),
+      opcode_(opcode) {}
 
-static inline struct ibv_sge fill_local_sge(local_mr const &mr) {
+static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
   struct ibv_sge sge = {};
   sge.addr = reinterpret_cast<uint64_t>(mr.addr());
   sge.length = mr.length();
@@ -337,7 +342,7 @@ bool qp::send_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
 }
 
 bool qp::send_awaitable::suspend(executor::callback_ptr callback) noexcept {
-  auto send_sge = fill_local_sge(*local_mr_);
+  auto send_sge = fill_local_sge(local_mr_view_);
 
   struct ibv_send_wr send_wr = {};
   struct ibv_send_wr *bad_send_wr = nullptr;
@@ -665,10 +670,11 @@ qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp, void *buffer,
                                    size_t length)
     : qp_(qp),
       local_mr_(std::make_shared<local_mr>(qp_->pd_->reg_mr(buffer, length))),
-      wc_() {}
+      local_mr_view_(*local_mr_), wc_() {}
 qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
                                    std::shared_ptr<local_mr> local_mr)
-    : qp_(qp), local_mr_(local_mr), wc_() {}
+    : qp_(qp), local_mr_(local_mr),
+      local_mr_view_(local_mr_ ? mr_view(*local_mr_) : mr_view()), wc_() {}
 
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
 
@@ -676,7 +682,7 @@ bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
   ibv_sge recv_sge, *recv_sge_list{nullptr};
   int num_sge{0};
   if (local_mr_) {
-    recv_sge = fill_local_sge(*local_mr_);
+    recv_sge = fill_local_sge(local_mr_view_);
     recv_sge_list = &recv_sge;
     num_sge = 1;
   }

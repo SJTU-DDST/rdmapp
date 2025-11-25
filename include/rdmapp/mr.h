@@ -189,6 +189,8 @@ using mr_view = mr<tags::mr::view>;
 
 template <> class mr<tags::mr::view> {
 public:
+  explicit mr();
+
   explicit mr(local_mr const &local, std::size_t offset = 0,
               std::size_t length = std::size_t(-1));
 

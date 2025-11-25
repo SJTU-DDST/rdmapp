@@ -87,7 +87,8 @@ public:
   class send_awaitable : public std::enable_shared_from_this<send_awaitable> {
     friend class qp;
     std::shared_ptr<qp> qp_;
-    std::shared_ptr<local_mr> local_mr_;
+    std::shared_ptr<local_mr> local_mr_ [[maybe_unused]];
+    mr_view local_mr_view_;
     remote_mr remote_mr_;
     std::exception_ptr exception_;
 
@@ -180,6 +181,7 @@ public:
     friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
+    mr_view local_mr_view_;
     std::exception_ptr exception_;
     struct ibv_wc wc_;
     enum ibv_wr_opcode opcode [[maybe_unused]];

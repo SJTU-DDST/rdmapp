@@ -79,6 +79,8 @@ std::span<std::byte> remote_mr::span() {
   return std::span<std::byte>(static_cast<std::byte *>(addr_), length_);
 }
 
+mr_view::mr() : addr_(nullptr), length_(0), lkey_(0) {}
+
 mr_view::mr(local_mr const &local, std::size_t offset, std::size_t length)
     : addr_(static_cast<std::byte *>(local.addr()) + offset),
       length_(std::min(length, local.length() - offset)), lkey_(local.lkey()) {}
