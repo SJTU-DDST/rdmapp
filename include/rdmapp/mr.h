@@ -16,6 +16,7 @@ namespace tags {
 namespace mr {
 struct local {};
 struct remote {};
+struct view {};
 } // namespace mr
 } // namespace tags
 
@@ -184,5 +185,38 @@ public:
 
 using local_mr = mr<tags::mr::local>;
 using remote_mr = mr<tags::mr::remote>;
+using mr_view = mr<tags::mr::view>;
+
+template <> class mr<tags::mr::view> {
+public:
+  explicit mr(local_mr const &local, std::size_t offset = 0,
+              std::size_t length = std::size_t(-1));
+
+  /**
+   * @brief Get the address of the memory region.
+   *
+   * @return void* The address of the memory region.
+   */
+  void *addr() const;
+
+  /**
+   * @brief Get the length of the memory region.
+   *
+   * @return size_t The length of the memory region.
+   */
+  size_t length() const;
+
+  /**
+   * @brief Get the local key of the memory region.
+   *
+   * @return uint32_t The local key of the memory region.
+   */
+  uint32_t lkey() const;
+
+private:
+  void *addr_;
+  size_t length_;
+  uint32_t lkey_;
+};
 
 } // namespace rdmapp
