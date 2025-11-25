@@ -14,21 +14,6 @@ fetchcontent_declare(
   GIT_SHALLOW 1
 )
 
-if(RDMAPP_BUILD_PIC)
-  set(CMAKE_PIC_ORIGIN ${CMAKE_POSITION_INDEPENDENT_CODE})
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif()
-fetchcontent_declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-  GIT_TAG 12.0.0
-  GIT_SHALLOW 1
-)
-fetchcontent_makeavailable(fmt)
-if(RDMAPP_BUILD_PIC)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ${CMAKE_PIC_ORIGIN})
-endif()
-
 fetchcontent_makeavailable(
   asio
   spdlog
