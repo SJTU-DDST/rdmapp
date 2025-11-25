@@ -194,8 +194,8 @@ public:
   explicit mr(local_mr const &local, std::size_t offset = 0,
               std::size_t length = std::size_t(-1));
 
-  explicit mr(remote_mr const &remote, std::size_t offset = 0,
-              std::size_t length = std::size_t(-1));
+  mr(remote_mr const &remote, std::size_t offset = 0,
+     std::size_t length = std::size_t(-1));
 
   mr(std::shared_ptr<local_mr> local);
 
