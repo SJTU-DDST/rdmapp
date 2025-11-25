@@ -88,11 +88,28 @@ public:
     friend class qp;
     std::shared_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
-    std::exception_ptr exception_;
     remote_mr remote_mr_;
-    uint64_t compare_add_;
-    uint64_t swap_;
-    uint32_t imm_;
+    std::exception_ptr exception_;
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#if defined(__clang__)
+#pragma GCC diagnostic ignored "-Wgnu-anonymous-struct"
+#pragma GCC diagnostic ignored "-Wnested-anon-types"
+#endif
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+    union {
+      struct {
+        uint64_t compare_add_;
+        uint64_t swap_;
+      };
+      uint32_t imm_;
+    };
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
     struct ibv_wc wc_;
     const enum ibv_wr_opcode opcode_;
 
