@@ -147,21 +147,21 @@ public:
    *
    * @return void* The address of the remote memory region.
    */
-  void *addr();
+  void *addr() const;
 
   /**
    * @brief Get the length of the remote memory region.
    *
    * @return uint32_t The length of the remote memory region.
    */
-  uint32_t length();
+  uint32_t length() const;
 
   /**
    * @brief Get the remote key of the memory region.
    *
    * @return uint32_t The remote key of the memory region.
    */
-  uint32_t rkey();
+  uint32_t rkey() const;
 
   std::span<std::byte const> span() const;
 
@@ -194,6 +194,11 @@ public:
   explicit mr(local_mr const &local, std::size_t offset = 0,
               std::size_t length = std::size_t(-1));
 
+  explicit mr(remote_mr const &remote, std::size_t offset = 0,
+              std::size_t length = std::size_t(-1));
+
+  mr(std::shared_ptr<local_mr> local);
+
   /**
    * @brief Get the address of the memory region.
    *
@@ -215,10 +220,22 @@ public:
    */
   uint32_t lkey() const;
 
+  /**
+   * @brief Get the remote key of the memory region.
+   *
+   * @return uint32_t The remote key of the memory region.
+   */
+  uint32_t rkey() const;
+
+  operator bool() const;
+
 private:
   void *addr_;
   size_t length_;
-  uint32_t lkey_;
+  union {
+    uint32_t lkey_; // for local mr
+    uint32_t rkey_; // for remote mr
+  };
 };
 
 } // namespace rdmapp

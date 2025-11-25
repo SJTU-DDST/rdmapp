@@ -48,7 +48,7 @@ asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
 
   for (int i : std::views::iota(0, kRpcCnt)) {
     /* recv the imm which needs ibv_post_send without local mr */
-    auto [_, imm] = co_await qp->recv(nullptr);
+    auto [_, imm] = co_await qp->recv();
     assert(imm.has_value());
     spdlog::info("[{}] written by client: imm={}", i, imm.value());
     registered_rpc_fn[imm.value()]();

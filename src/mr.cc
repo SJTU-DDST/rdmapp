@@ -65,11 +65,11 @@ std::span<std::byte> local_mr::span() {
 remote_mr::mr(void *addr, uint32_t length, uint32_t rkey)
     : addr_(addr), length_(length), rkey_(rkey) {}
 
-void *remote_mr::addr() { return addr_; }
+void *remote_mr::addr() const { return addr_; }
 
-uint32_t remote_mr::length() { return length_; }
+uint32_t remote_mr::length() const { return length_; }
 
-uint32_t remote_mr::rkey() { return rkey_; }
+uint32_t remote_mr::rkey() const { return rkey_; }
 
 std::span<std::byte const> remote_mr::span() const {
   return std::span<std::byte>(static_cast<std::byte *>(addr_), length_);
@@ -81,14 +81,26 @@ std::span<std::byte> remote_mr::span() {
 
 mr_view::mr() : addr_(nullptr), length_(0), lkey_(0) {}
 
+mr_view::mr(std::shared_ptr<local_mr> local)
+    : mr_view(local ? mr_view(*local) : mr_view()) {} // 委托给不同的构造函数
+
 mr_view::mr(local_mr const &local, std::size_t offset, std::size_t length)
     : addr_(static_cast<std::byte *>(local.addr()) + offset),
       length_(std::min(length, local.length() - offset)), lkey_(local.lkey()) {}
+
+mr_view::mr(remote_mr const &remote, std::size_t offset, std::size_t length)
+    : addr_(static_cast<std::byte *>(remote.addr()) + offset),
+      length_(std::min(length, remote.length() - offset)),
+      rkey_(remote.rkey()) {}
 
 void *mr_view::addr() const { return addr_; }
 
 size_t mr_view::length() const { return length_; }
 
 uint32_t mr_view::lkey() const { return lkey_; }
+
+uint32_t mr_view::rkey() const { return rkey_; }
+
+mr_view::operator bool() const { return addr(); }
 
 } // namespace rdmapp
