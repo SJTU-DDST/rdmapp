@@ -273,7 +273,8 @@ public:
    * registered as a memory region first and then deregistered upon completion.
    *
    * @param buffer span to local buffer. It should be valid until completion.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result>
   send(std::span<std::byte const> buffer);
@@ -285,7 +286,8 @@ public:
    *
    * @param remote_mr Remote memory region handle.
    * @param buffer span to local buffer. It should be valid until completion.
-   * @return send_awaitable A coroutine returning length of the data written.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data written.
    */
   [[nodiscard]] asio::awaitable<send_result>
   write(mr_view remote_mr, std::span<std::byte const> buffer);
@@ -299,7 +301,8 @@ public:
    * @param buffer span to local buffer. It should be valid until
    * completion.
    * @param imm The immediate value.
-   * @return send_awaitable A coroutine returning length of the data written.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data written.
    */
   [[nodiscard]] asio::awaitable<send_result>
   write_with_imm(mr_view remote_mr, std::span<std::byte const> buffer,
@@ -313,7 +316,8 @@ public:
    * @param remote_mr Remote memory region handle.
    * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @return send_awaitable A coroutine returning length of the data read.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data read.
    */
   [[nodiscard]] asio::awaitable<send_result> read(mr_view remote_mr,
                                                   std::span<std::byte> buffer);
@@ -327,7 +331,8 @@ public:
    * @param buffer span to local buffer. It should be valid until
    * completion.
    * @param add The delta.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result>
   fetch_and_add(mr_view remote_mr, std::span<std::byte> buffer, uint64_t add);
@@ -342,7 +347,8 @@ public:
    * completion.
    * @param compare The expected old value.
    * @param swap The desired new value.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result>
   compare_and_swap(mr_view remote_mr, std::span<std::byte> buffer,
@@ -354,9 +360,9 @@ public:
    * a memory region first and then deregistered upon completion.
    * @param buffer span to local buffer. It should be valid until
    * completion.
-   * @return recv_awaitable A coroutine returning std::pair<uint32_t,
-   * std::optional<uint32_t>>, with first indicating the length of received
-   * data, and second indicating the immediate value if any.
+   * @return asio::awaitable<recv_result> A coroutine returning
+   * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
+   * length of received data, and second indicating the immediate value if any.
    */
   [[nodiscard]] asio::awaitable<recv_result> recv(std::span<std::byte> buffer);
 
@@ -365,7 +371,8 @@ public:
    *
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result> send(mr_view local_mr);
 
@@ -376,7 +383,8 @@ public:
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
    * controlled by a smart pointer.
-   * @return send_awaitable A coroutine returning length of the data written.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data written.
    */
   [[nodiscard]] asio::awaitable<send_result> write(mr_view remote_mr,
                                                    mr_view local_mr);
@@ -389,7 +397,8 @@ public:
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
    * @param imm The immediate value.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data written.
    */
   [[nodiscard]] asio::awaitable<send_result>
   write_with_imm(mr_view remote_mr, mr_view local_mr, uint32_t imm);
@@ -400,7 +409,8 @@ public:
    * @param remote_mr Remote memory region handle.
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
-   * @return send_awaitable A coroutine returning length of the data read.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data read.
    */
   [[nodiscard]] asio::awaitable<send_result> read(mr_view remote_mr,
                                                   mr_view local_mr);
@@ -413,7 +423,8 @@ public:
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
    * @param add The delta.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result>
   fetch_and_add(mr_view remote_mr, mr_view local_mr, uint64_t add);
@@ -427,7 +438,8 @@ public:
    * completion.
    * @param compare The expected old value.
    * @param swap The desired new value.
-   * @return send_awaitable A coroutine returning length of the data sent.
+   * @return asio::awaitable<send_result> A coroutine returning result of the
+   * data sent.
    */
   [[nodiscard]] asio::awaitable<send_result> compare_and_swap(mr_view remote_mr,
                                                               mr_view local_mr,
@@ -440,7 +452,7 @@ public:
    *
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
-   * @return recv_awaitable A coroutine returning std::pair<uint32_t,
+   * @return asio::awaitable<recv_result> A coroutine returning std::pair<uint32_t,
    * std::optional<uint32_t>>, with first indicating the length of received
    * data, and second indicating the immediate value if any.
    */

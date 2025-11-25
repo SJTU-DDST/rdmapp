@@ -26,7 +26,7 @@ public:
   /**
    * @brief Construct a new acceptor object.
    *
-   * @param loop The event loop to use.
+   * @param io_ctx The asio::io_context to use.
    * @param port The port to listen on.
    * @param recv_cq The recv completion queue to use for incoming Queue Pairs.
    * @param send_cq The send completion queue to use for incoming Queue Pairs.
@@ -40,7 +40,7 @@ public:
   /**
    * @brief Construct a new acceptor object.
    *
-   * @param loop The event loop to use.
+   * @param io_ctx The asio::io_context to use.
    * @param port The port to listen on.
    * @param pd The protection domain for all new Queue Pairs.
    * @param recv_cq The recv completion queue to use for incoming Queue Pairs.
@@ -56,8 +56,9 @@ public:
    * @brief This function is used to accept an incoming connection and queue
    * pair. This should be called in a loop.
    *
-   * @return task<std::shared_ptr<qp>> A completion task that returns a shared
-   * pointer to the new queue pair. It will be in the RTS state.
+   * @return asio::awaitable<std::shared_ptr<qp>> An asio::awaitable that
+   * returns a shared pointer to the new queue pair. It will be in the RTS
+   * state.
    */
   asio::awaitable<std::shared_ptr<qp>> accept();
 

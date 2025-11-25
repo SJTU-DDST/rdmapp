@@ -34,9 +34,9 @@ public:
   /**
    * @brief Construct a new connector object.
    *
-   * @param loop The event loop to use.
    * @param hostname The hostname to connect to.
    * @param port The port to connect to.
+   * @param pd The rdma protection domain.
    * @param recv_cq The recv completion queue to use for new Queue Pairs.
    * @param send_cq The send completion queue to use for new Queue Pairs.
    * @param srq (Optional) The shared receive queue to use for new Queue
@@ -49,9 +49,9 @@ public:
   /**
    * @brief Construct a new connector object.
    *
-   * @param loop The event loop to use.
    * @param hostname The hostname to connect to.
    * @param port The port to connect to.
+   * @param pd The rdma protection domain.
    * @param recv_cq The send/recv completion queue to use for new Queue Pairs.
    * @param srq (Optional) The shared receive queue to use for new Queue
    * Pairs.
@@ -64,7 +64,7 @@ public:
    * @brief This function is used to connect to a remote endpoint and
    * establish a Queue Pair.
    *
-   * @return task<std::shared_ptr<qp>>
+   * @return asio::awaitable<std::shared_ptr<qp>>
    */
   asio::awaitable<std::shared_ptr<qp>> connect();
 };
