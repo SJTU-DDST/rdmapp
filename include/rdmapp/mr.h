@@ -229,6 +229,10 @@ public:
 
   operator bool() const;
 
+  std::span<std::byte const> span() const;
+
+  std::span<std::byte> span();
+
 private:
   void *addr_;
   size_t length_;

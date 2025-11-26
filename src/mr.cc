@@ -103,4 +103,12 @@ uint32_t mr_view::rkey() const { return rkey_; }
 
 mr_view::operator bool() const { return addr(); }
 
+std::span<std::byte const> mr_view::span() const {
+  return std::span<std::byte>(static_cast<std::byte *>(addr()), length());
+}
+
+std::span<std::byte> mr_view::span() {
+  return std::span<std::byte>(static_cast<std::byte *>(addr()), length());
+}
+
 } // namespace rdmapp
