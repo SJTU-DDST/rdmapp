@@ -79,7 +79,8 @@ std::span<std::byte> remote_mr::span() {
   return std::span<std::byte>(static_cast<std::byte *>(addr_), length_);
 }
 
-mr_view::mr() : addr_(nullptr), length_(0), lkey_(0) {}
+mr_view::mr(void *addr, std::size_t length, uint32_t key)
+    : addr_(addr), length_(length), rkey_(key) /*or key, each is ok*/ {}
 
 mr_view::mr(std::shared_ptr<local_mr> local)
     : mr_view(local ? mr_view(*local) : mr_view()) {} // 委托给不同的构造函数

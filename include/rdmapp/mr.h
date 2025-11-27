@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <vector>
@@ -189,7 +189,7 @@ using mr_view = mr<tags::mr::view>;
 
 template <> class mr<tags::mr::view> {
 public:
-  explicit mr();
+  explicit mr(void *addr = nullptr, std::size_t length = 0, uint32_t key = 0);
 
   explicit mr(local_mr const &local, std::size_t offset = 0,
               std::size_t length = std::size_t(-1));
@@ -235,7 +235,7 @@ public:
 
 private:
   void *addr_;
-  size_t length_;
+  std::size_t length_;
   union {
     uint32_t lkey_; // for local mr
     uint32_t rkey_; // for remote mr
