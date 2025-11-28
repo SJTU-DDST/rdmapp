@@ -1,5 +1,6 @@
 #include "qp_acceptor.h"
 #include "qp_connector.h"
+#include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/signal_set.hpp>
@@ -16,12 +17,12 @@
 
 using namespace std::literals::chrono_literals;
 
-std::atomic<size_t> gSendCount = 0;
-
 constexpr size_t kBufferSizeBytes = 2 * 1024 * 1024;
 constexpr size_t kSendCount = 1024 * 1024 * 1024;
+constexpr size_t kQP = 3;
+std::array<std::atomic<size_t>, kQP> gSendCounts;
 
-asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
+asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp, int id) {
   std::vector<uint8_t> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
@@ -35,14 +36,13 @@ asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
                remote_mr.addr(), remote_mr.length(), remote_mr.rkey());
   for (size_t i = 0; i < kSendCount; ++i) {
     co_await qp->write(remote_mr, local_mr);
-    gSendCount.fetch_add(1);
+    gSendCounts[id].fetch_add(1);
   }
   co_await qp->write_with_imm(remote_mr, local_mr, 0xDEADBEEF);
   co_return;
 }
 
-asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
-  auto qp = co_await acceptor->accept();
+asio::awaitable<void> handler(std::shared_ptr<rdmapp::qp> qp) {
   std::vector<uint8_t> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
@@ -62,9 +62,21 @@ asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   co_return;
 }
 
+asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
+  auto executor = co_await asio::this_coro::executor;
+  for (size_t i = 0; i < kQP; i++) {
+    auto qp = co_await acceptor->accept();
+    asio::co_spawn(executor, handler(std::move(qp)), asio::detached);
+  }
+  co_return;
+}
+
 asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
-  auto qp = co_await connector->connect();
-  co_await client_worker(qp);
+  auto executor = co_await asio::this_coro::executor;
+  for (size_t i = 0; i < kQP; i++) {
+    auto qp = co_await connector->connect();
+    asio::co_spawn(executor, client_worker(std::move(qp), i), asio::detached);
+  }
   co_return;
 }
 
@@ -85,9 +97,16 @@ int main(int argc, char *argv[]) {
   auto reporter = std::jthread([&](std::stop_token token) {
     while (!token.stop_requested()) {
       std::this_thread::sleep_for(1s);
-      auto iops = gSendCount.exchange(0);
+      size_t iops = 0;
+      for (size_t i = 0; i < kQP; i++) {
+        auto t = gSendCounts[i].exchange(0);
+        spdlog::info("IOPS({}): {} buffer_size={}B BW={}Gbps", i, t,
+                     kBufferSizeBytes,
+                     1.0f * kBufferSizeBytes * t * 8 / 1000 / 1000 / 1000);
+        iops += t;
+      }
       spdlog::info("IOPS: {} buffer_size={}B BW={}Gbps", iops, kBufferSizeBytes,
-                   kBufferSizeBytes * iops * 8 / 1000 / 1000 / 1000);
+                   1.0f * kBufferSizeBytes * iops * 8 / 1000 / 1000 / 1000);
     }
   });
 
@@ -97,7 +116,6 @@ int main(int argc, char *argv[]) {
     io_ctx->stop();
     pool.stop();
     spdlog::info("gracefully shutdown");
-    gSendCount.store(0);
   });
 
   if (argc == 2) {
@@ -105,7 +123,13 @@ int main(int argc, char *argv[]) {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
     asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
-    io_ctx->run();
+    std::vector<std::jthread> workers_;
+    for (size_t i = 0; i < kQP; i++) {
+      workers_.emplace_back([io_ctx, i]() {
+        io_ctx->run();
+        spdlog::info("worker[{}] exited", i);
+      });
+    }
     return 0;
   }
 
