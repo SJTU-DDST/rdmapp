@@ -18,14 +18,14 @@ using namespace std::literals::chrono_literals;
 
 std::atomic<size_t> gSendCount = 0;
 
-constexpr size_t kBufferSizeBytes = 8;
+constexpr size_t kBufferSizeBytes = 2 * 1024 * 1024;
 constexpr size_t kSendCount = 1024 * 1024 * 1024;
 
 asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   std::vector<uint8_t> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
-      qp->pd_ptr()->reg_mr(&buffer[0], buffer.size()));
+      qp->pd_ptr()->reg_mr(buffer.data(), buffer.size()));
   char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   auto remote_mr_serialized_data =
       std::as_writable_bytes(std::span(remote_mr_serialized));
@@ -46,7 +46,7 @@ asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   std::vector<uint8_t> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
-      qp->pd_ptr()->reg_mr(&buffer[0], sizeof(buffer)));
+      qp->pd_ptr()->reg_mr(buffer.data(), buffer.size()));
   auto local_mr_serialized = local_mr->serialize();
   auto local_mr_serialized_data = std::as_bytes(std::span(local_mr_serialized));
   co_await qp->send(local_mr_serialized_data);
@@ -85,8 +85,9 @@ int main(int argc, char *argv[]) {
   auto reporter = std::jthread([&](std::stop_token token) {
     while (!token.stop_requested()) {
       std::this_thread::sleep_for(1s);
-      spdlog::info("IOPS: {} buffer_size={}B", gSendCount.exchange(0),
-                   kBufferSizeBytes);
+      auto iops = gSendCount.exchange(0);
+      spdlog::info("IOPS: {} buffer_size={}B BW={}Gbps", iops, kBufferSizeBytes,
+                   kBufferSizeBytes * iops * 8 / 1000 / 1000 / 1000);
     }
   });
 
