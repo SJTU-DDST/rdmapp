@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
   auto io_ctx = std::make_shared<asio::io_context>(4);
   auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
-  auto reporter = std::jthread([&](std::stop_token token) {
+  auto reporter_fn = [&](std::stop_token token) {
     while (!token.stop_requested()) {
       std::this_thread::sleep_for(1s);
       size_t iops = 0;
@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
       spdlog::info("IOPS: {} buffer_size={}B BW={}Gbps", iops, kBufferSizeBytes,
                    1.0f * kBufferSizeBytes * iops * 8 / 1000 / 1000 / 1000);
     }
-  });
+  };
 
   asio::thread_pool pool(4);
   asio::signal_set signals(*io_ctx, SIGINT, SIGTERM);
@@ -139,6 +139,7 @@ int main(int argc, char *argv[]) {
         argv[1], std::stoi(argv[2]), pd, cq);
     // NOTE: thread pool perform actually better
     asio::co_spawn(pool, client(connector), asio::detached);
+    auto reporter = std::jthread(reporter_fn);
     pool.join();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
   }
