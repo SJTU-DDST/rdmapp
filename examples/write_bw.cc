@@ -2,12 +2,13 @@
 #include "qp_connector.h"
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/signal_set.hpp>
 #include <asio/thread_pool.hpp>
 #include <cassert>
-#include <iostream>
 #include <memory>
 #include <span>
 #include <spdlog/spdlog.h>
+#include <stop_token>
 #include <string>
 #include <thread>
 
@@ -30,9 +31,8 @@ asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
       std::as_writable_bytes(std::span(remote_mr_serialized));
   co_await qp->recv(remote_mr_serialized_data);
   auto remote_mr = rdmapp::remote_mr::deserialize(remote_mr_serialized);
-  std::cout << "Received mr addr=" << remote_mr.addr()
-            << " length=" << remote_mr.length() << " rkey=" << remote_mr.rkey()
-            << " from server" << std::endl;
+  spdlog::info("received mr addr={} length={} rkey={} from server",
+               remote_mr.addr(), remote_mr.length(), remote_mr.rkey());
   for (size_t i = 0; i < kSendCount; ++i) {
     co_await qp->write(remote_mr, local_mr);
     gSendCount.fetch_add(1);
@@ -52,7 +52,7 @@ asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   co_await qp->send(local_mr_serialized_data);
   spdlog::info("sent mr addr={} length={} rkey={} to client", local_mr->addr(),
                local_mr->length(), local_mr->rkey());
-  auto imm = (co_await qp->recv(local_mr)).second;
+  auto imm = (co_await qp->recv()).second;
   if (!imm.has_value()) {
     throw std::runtime_error("No imm received");
   }
@@ -69,43 +69,53 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
 }
 
 int main(int argc, char *argv[]) {
+  if (argc < 2) {
+    spdlog::info(
+        "Usage: {} [port] for server and {} [server_ip] [port] for client",
+        argv[0], argv[0]);
+    return -1;
+  }
+
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(4);
   auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
-  auto reporter = std::jthread([&]() {
-    while (true) {
+  auto reporter = std::jthread([&](std::stop_token token) {
+    while (!token.stop_requested()) {
       std::this_thread::sleep_for(1s);
-      std::cout << "IOPS: " << gSendCount.exchange(0) << std::endl;
+      spdlog::info("IOPS: {} buffer_size={}B", gSendCount.exchange(0),
+                   kBufferSizeBytes);
     }
   });
 
-  std::jthread _([io_ctx]() {
-    auto work_guard = asio::make_work_guard(*io_ctx);
-    io_ctx->run();
+  asio::thread_pool pool(4);
+  asio::signal_set signals(*io_ctx, SIGINT, SIGTERM);
+  signals.async_wait([io_ctx, &pool](auto, auto) {
+    io_ctx->stop();
+    pool.stop();
+    spdlog::info("gracefully shutdown");
+    gSendCount.store(0);
   });
 
-  asio::thread_pool pool(4);
   if (argc == 2) {
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
     asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
     io_ctx->run();
-  } else if (argc == 3) {
+    return 0;
+  }
+
+  if (argc == 3) {
+    std::jthread _([io_ctx]() { io_ctx->run(); }); // handle SIGINT/SIGTERM
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
     // NOTE: thread pool perform actually better
     asio::co_spawn(pool, client(connector), asio::detached);
     pool.join();
-    io_ctx->stop();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
-  } else {
-    std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
-              << " [server_ip] [port] for client" << std::endl;
   }
-
   return 0;
 }

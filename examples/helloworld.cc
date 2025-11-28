@@ -3,6 +3,7 @@
 #include "qp_connector.h"
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/signal_set.hpp>
 #include <asio/use_future.hpp>
 #include <cstdint>
 #include <cstdlib>
@@ -24,6 +25,11 @@ int main(int argc, char *argv[]) {
 
   switch (argc) {
   case 2: {
+    asio::signal_set signals(*io_ctx, SIGINT, SIGTERM);
+    signals.async_wait([io_ctx](auto, auto) {
+      io_ctx->stop();
+      spdlog::info("gracefully shutdown");
+    });
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);

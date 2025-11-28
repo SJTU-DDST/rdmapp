@@ -3,6 +3,7 @@
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/signal_set.hpp>
 #include <asio/thread_pool.hpp>
 #include <cassert>
 #include <chrono>
@@ -76,9 +77,16 @@ int main(int argc, char *argv[]) {
   auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
   asio::thread_pool pool(kGlobalThread);
-  std::jthread _([io_ctx]() {
+  asio::post(pool, [io_ctx]() {
     auto work_guard = asio::make_work_guard(*io_ctx);
     io_ctx->run();
+  });
+
+  asio::signal_set signals(*io_ctx, SIGINT, SIGTERM);
+  signals.async_wait([io_ctx, &pool](auto, auto) {
+    io_ctx->stop();
+    pool.stop();
+    spdlog::info("gracefully shutdown");
   });
 
   if (argc == 2) {
