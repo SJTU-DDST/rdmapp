@@ -93,7 +93,7 @@ set(RDMAPP_SOURCE_FILES
   src/mr.cc
 )
 
-set(RDMAPP_LINK_LIBRARIES ibverbs Threads::Threads spdlog)
+set(RDMAPP_LINK_LIBRARIES ibverbs Threads::Threads spdlog::spdlog)
 
 add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 
@@ -172,7 +172,6 @@ if(RDMAPP_BUILD_EXAMPLES)
   foreach(EXAMPLE IN LISTS RDMAPP_EXAMPLES)
     add_executable(${EXAMPLE} examples/${EXAMPLE}.cc)
     target_link_libraries(${EXAMPLE} rdmapp_examples)
-    target_link_libraries(${EXAMPLE} spdlog)
     target_compile_options(${EXAMPLE} ${RDMAPP_COMPILE_OPTIONS})
   endforeach()
 
