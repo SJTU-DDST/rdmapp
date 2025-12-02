@@ -452,9 +452,9 @@ public:
    *
    * @param local_mr Registered local memory region, which should be valid until
    * completion.
-   * @return asio::awaitable<recv_result> A coroutine returning std::pair<uint32_t,
-   * std::optional<uint32_t>>, with first indicating the length of received
-   * data, and second indicating the immediate value if any.
+   * @return asio::awaitable<recv_result> A coroutine returning
+   * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
+   * length of received data, and second indicating the immediate value if any.
    */
   [[nodiscard]] asio::awaitable<recv_result> recv(mr_view local_mr = mr_view());
 
@@ -533,8 +533,13 @@ private:
  * and perform send/recv/read/write/atomic operations on the QP.
  */
 
-/** \example send_bw.cc
+/** \example write_bw.cc
  * This is an example of testing the bandwidth of a Queue Pair using send/recv.
  * It also demonstrates how to run multiple tasks in background concurrently and
  * wait for them to complete.
+ */
+
+/** \example rpc.cc
+ * This is a simple example of implementing simple rpc with Queue Pair using
+ * write_with_imm/recv
  */
