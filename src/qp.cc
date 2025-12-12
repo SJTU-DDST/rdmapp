@@ -312,6 +312,8 @@ bool qp::send_awaitable::suspend(executor::callback_ptr callback) noexcept {
     send_wr.wr.rdma.rkey = remote_mr_view_.rkey();
     if (opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM) {
       send_wr.imm_data = imm_;
+    } else if (opcode_ == IBV_WR_RDMA_WRITE) {
+      write_byte_len_ = local_mr_view_.length();
     }
   } else if (is_atomic()) {
     assert(remote_mr_.addr() != nullptr);
@@ -350,7 +352,14 @@ qp::send_result qp::send_awaitable::resume() const {
     std::rethrow_exception(exception_);
   }
   check_wc_status(wc_.status, "failed to send");
-  return wc_.byte_len;
+  /* ref: https://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
+   * byte_len: The number of bytes transferred. Relevant if the Receive Queue
+   * for incoming Send or RDMA Write with immediate operations. This value
+   * doesn't include the length of the immediate data, if such exists. Relevant
+   * in the Send Queue for RDMA Read and Atomic operations.
+   * */
+  /* this field is undefined for rdma write*/
+  return opcode_ == IBV_WR_RDMA_WRITE ? write_byte_len_ : wc_.byte_len;
 }
 
 uint32_t qp::send_awaitable::await_resume() const { return resume(); }
@@ -587,7 +596,7 @@ qp::recv_result qp::recv_awaitable::resume() const {
   }
   check_wc_status(wc_.status, "failed to recv");
   if (wc_.wc_flags & IBV_WC_WITH_IMM) {
-    spdlog::debug("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id,
+    spdlog::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id,
                   wc_.imm_data);
     return std::make_pair(wc_.byte_len, wc_.imm_data);
   }

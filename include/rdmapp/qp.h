@@ -106,6 +106,9 @@ public:
         uint64_t swap_;
       };
       uint32_t imm_;
+      /* for rdma_write, wc.byte_len is undefined*/
+      /* hence we store the write bytes here as return*/
+      uint32_t write_byte_len_;
     };
 
 #if defined(__GNUC__) || defined(__clang__)
