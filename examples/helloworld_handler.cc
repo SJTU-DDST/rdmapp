@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <string_view>
 
+#include <rdmapp/mr.h>
 #include <rdmapp/qp.h>
 
 constexpr std::string_view msg = "hello";
@@ -56,8 +57,23 @@ static asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   spdlog::info("fetched and added by client: {}", counter);
   imm = (co_await qp->recv(local_mr)).second;
   assert(imm.has_value());
-  spdlog::info("compared and swapper by client: {}", counter);
+  spdlog::info("compared and swapped by client: {}", counter);
 
+  {
+    buffer.resize(65536);
+    auto large_local_mr = std::make_shared<rdmapp::local_mr>(
+        qp->pd_ptr()->reg_mr(buffer.data(), buffer.size()));
+    auto large_local_mr_serialized = large_local_mr->serialize();
+    auto large_local_mr_serialized_data =
+        std::as_bytes(std::span(large_local_mr_serialized));
+    co_await qp->send(large_local_mr_serialized_data);
+    spdlog::info("sent mr: addr={} length={} rkey={} to client",
+                 local_mr->addr(), local_mr->length(), local_mr->rkey());
+
+    auto [nbytes, imm] = co_await qp->recv();
+    assert(imm);
+    spdlog::info("recv write_with_imm: imm={} nbytes={}", *imm, nbytes);
+  }
   co_return;
 }
 
@@ -116,5 +132,29 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   co_await qp->compare_and_swap(counter_mr, cnt_buffer, 43, 4422);
   spdlog::info("compared and swapped from server: {}", counter);
   co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
+
+  {
+    char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+    auto remote_mr_serialized_data =
+        std::as_writable_bytes(std::span(remote_mr_serialized));
+    co_await qp->recv(remote_mr_serialized_data);
+    // write to a buffer
+    auto remote_mr = rdmapp::remote_mr::deserialize(remote_mr_serialized);
+    spdlog::info("received mr addr={} length={} rkey={} from server",
+                 remote_mr.addr(), remote_mr.length(), remote_mr.rkey());
+
+    std::vector<std::byte> local_buffer(2000);
+    auto local_mr =
+        qp->pd_ptr()->reg_mr(local_buffer.data(), local_buffer.size());
+
+    auto nbytes = co_await qp->write(remote_mr, local_mr);
+    spdlog::info("written: nbytes={}", nbytes);
+
+    nbytes = co_await qp->read(remote_mr, local_mr);
+    spdlog::info("read: nbytes={}", nbytes);
+
+    co_await qp->write_with_imm(remote_mr, std::vector<std::byte>(9987), 2099);
+    spdlog::info("written with imm and end: imm={}", 2099);
+  }
   co_return;
 }

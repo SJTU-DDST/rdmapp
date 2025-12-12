@@ -191,8 +191,8 @@ template <> class mr<tags::mr::view> {
 public:
   explicit mr(void *addr = nullptr, std::size_t length = 0, uint32_t key = 0);
 
-  explicit mr(local_mr const &local, std::size_t offset = 0,
-              std::size_t length = std::size_t(-1));
+  mr(local_mr const &local, std::size_t offset = 0,
+     std::size_t length = std::size_t(-1));
 
   mr(remote_mr const &remote, std::size_t offset = 0,
      std::size_t length = std::size_t(-1));
