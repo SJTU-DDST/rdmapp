@@ -25,6 +25,7 @@ option(RDMAPP_ASAN "Build with AddressSanitizer" OFF)
 option(RDMAPP_BUILD_EXAMPLES_PYBIND "Build pybind11 example" OFF)
 option(RDMAPP_BUILD_NORTTI "Build without RTTI" ON)
 option(RDMAPP_BUILD_PIC "Build with -fPIC" OFF)
+option(RDMAPP_BUILD_LTO "Build with -flto" OFF)
 
 function(print_options_compact)
   message(STATUS "[rdmapp] config:")
@@ -34,6 +35,7 @@ function(print_options_compact)
   message(STATUS "  RDMAPP_BUILD_EXAMPLES_PYBIND: ${RDMAPP_BUILD_EXAMPLES_PYBIND}")
   message(STATUS "  RDMAPP_BUILD_NORTTI: ${RDMAPP_BUILD_NORTTI}")
   message(STATUS "  RDMAPP_BUILD_PIC: ${RDMAPP_BUILD_PIC}")
+  message(STATUS "  RDMAPP_BUILD_LTO: ${RDMAPP_BUILD_LTO}")
 endfunction()
 
 if(RDMAPP_BUILD_EXAMPLES_PYBIND)
@@ -77,9 +79,9 @@ if(RDMAPP_BUILD_DOCS)
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
       COMMENT "Generating API documentation with Doxygen"
       VERBATIM)
-  else(DOXYGEN_FOUND)
+  else()
     message("Doxygen need to be installed to generate the doxygen documentation")
-  endif(DOXYGEN_FOUND)
+  endif()
 endif()
 
 set(RDMAPP_SOURCE_FILES
@@ -107,6 +109,13 @@ list(APPEND
   RDMAPP_LINK_OPTIONS
   PRIVATE
 )
+
+if(RDMAPP_BUILD_LTO)
+  message(STATUS "[rdmapp] build: build with -flto")
+  list(APPEND RDMAPP_COMPILE_OPTIONS PUBLIC -flto)
+  list(APPEND RDMAPP_LINK_OPTIONS PUBLIC -flto)
+endif()
+
 if(RDMAPP_BUILD_NORTTI)
   message(STATUS "[rdmapp] build: build with -fno-rtti and disable asio typeid")
   list(APPEND RDMAPP_COMPILE_OPTIONS PUBLIC -fno-rtti -DASIO_NO_TYPEID)
@@ -141,8 +150,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
   endif()
 endif()
 
-target_compile_options(rdmapp PRIVATE ${RDMAPP_COMPILE_OPTIONS})
-target_link_libraries(rdmapp PUBLIC ibverbs Threads::Threads PRIVATE spdlog::spdlog)
+target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
+target_link_libraries(rdmapp PUBLIC ibverbs Threads::Threads PRIVATE spdlog::spdlog_header_only)
 target_include_directories(rdmapp PUBLIC include)
 target_link_libraries(rdmapp PUBLIC asio)
 
@@ -191,8 +200,9 @@ if(RDMAPP_BUILD_EXAMPLES)
     # in the linking stage, it surely will work, but for pybind11 program, there will be really
     # fucking tricky problems.
     target_include_directories(rdmapp_py PUBLIC examples/include)
-    target_compile_options(rdmapp_py PRIVATE -Wall -Wextra -pedantic)
-    target_link_libraries(rdmapp_py PRIVATE rdmapp)
+    target_compile_options(rdmapp_py ${RDMAPP_COMPILE_OPTIONS})
+    target_link_options(rdmapp_py ${RDMAPP_LINK_OPTIONS})
+    target_link_libraries(rdmapp_py PUBLIC rdmapp spdlog::spdlog)
   endif()
 endif()
 
