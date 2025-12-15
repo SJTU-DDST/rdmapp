@@ -1,12 +1,12 @@
 #include "rdmapp/mr.h"
 
 #include <cstdint>
-#include <spdlog/spdlog.h>
 #include <utility>
 #include <vector>
 
 #include <infiniband/verbs.h>
 
+#include "rdmapp/detail/logger.h"
 #include "rdmapp/detail/serdes.h"
 
 namespace rdmapp {
@@ -30,10 +30,9 @@ local_mr::~mr() {
   }
   auto addr = mr_->addr;
   if (auto rc = ::ibv_dereg_mr(mr_); rc != 0) [[unlikely]] {
-    spdlog::error("failed to dereg mr {} addr={}", fmt::ptr(mr_),
-                  fmt::ptr(addr));
+    log::error("failed to dereg mr {} addr={}", fmt::ptr(mr_), fmt::ptr(addr));
   } else {
-    spdlog::trace("dereg mr {} addr={}", fmt::ptr(mr_), fmt::ptr(addr));
+    log::trace("dereg mr {} addr={}", fmt::ptr(mr_), fmt::ptr(addr));
   }
 }
 

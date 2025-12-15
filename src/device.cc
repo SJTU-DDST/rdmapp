@@ -1,16 +1,17 @@
 #include "rdmapp/device.h"
 
-#include <cstdio>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 #include <infiniband/verbs.h>
 
 #include "rdmapp/error.h"
+
+#include "rdmapp/detail/logger.h"
 
 namespace rdmapp {
 
@@ -28,7 +29,7 @@ device_list::device_list() : devices_(nullptr), nr_devices_(0) {
 device_list::~device_list() {
   if (devices_ != nullptr) {
     ::ibv_free_device_list(devices_);
-    spdlog::debug("closed devices list");
+    log::debug("closed devices list");
   }
 }
 
@@ -97,8 +98,8 @@ void device::open_device(struct ibv_device *target, uint16_t port_num) {
     return "unspecified";
   }();
   auto const gid_str = gid_hex_string(gid_);
-  spdlog::debug("opened Infiniband device gid={} lid={} link_layer={}", gid_str,
-                port_attr_.lid, link_layer);
+  log::debug("opened Infiniband device gid={} lid={} link_layer={}", gid_str,
+             port_attr_.lid, link_layer);
 }
 
 device::device(struct ibv_device *target, uint16_t port_num) {
@@ -174,10 +175,10 @@ device::~device() {
   auto const gid_str = gid_hex_string(gid_);
 
   if (auto rc = ::ibv_close_device(ctx_); rc != 0) [[unlikely]] {
-    spdlog::error("failed to close device gid={} lid={}: {}", gid_str,
-                  port_attr_.lid, ::strerror(rc));
+    log::error("failed to close device gid={} lid={}: {}", gid_str,
+               port_attr_.lid, ::strerror(rc));
   } else {
-    spdlog::debug("closed device gid={} lid={}", gid_str, port_attr_.lid);
+    log::debug("closed device gid={} lid={}", gid_str, port_attr_.lid);
   }
 }
 

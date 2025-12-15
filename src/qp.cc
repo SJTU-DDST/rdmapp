@@ -12,7 +12,6 @@
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <strings.h>
 #include <utility>
@@ -26,6 +25,7 @@
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"
 
+#include "rdmapp/detail/logger.h"
 #include "rdmapp/detail/serdes.h"
 
 namespace rdmapp {
@@ -100,8 +100,8 @@ void qp::create() {
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
   check_ptr(qp_, "failed to create qp");
   sq_psn_ = next_sq_psn.fetch_add(1);
-  spdlog::trace("created qp {} lid={} qpn={} psn={}", fmt::ptr(qp_),
-                pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
+  log::trace("created qp {} lid={} qpn={} psn={}", fmt::ptr(qp_),
+             pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
 void qp::init() {
@@ -118,7 +118,7 @@ void qp::init() {
                                  IBV_QP_PKEY_INDEX),
              "failed to transition qp to init state");
   } catch (const std::exception &e) {
-    spdlog::error(e.what());
+    log::error("{}", e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -152,7 +152,7 @@ void qp::rtr(uint16_t remote_lid, uint32_t remote_qpn, uint32_t remote_psn,
                                  IBV_QP_MAX_DEST_RD_ATOMIC),
              "failed to transition qp to rtr state");
   } catch (const std::exception &e) {
-    spdlog::error(e.what());
+    log::error("{}", e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -176,7 +176,7 @@ void qp::rts() {
                                  IBV_QP_MAX_QP_RD_ATOMIC),
              "failed to transition qp to rts state");
   } catch (std::exception const &e) {
-    spdlog::error(e.what());
+    log::error("{}", e.what());
     qp_ = nullptr;
     destroy();
     throw;
@@ -185,8 +185,8 @@ void qp::rts() {
 
 void qp::post_send(struct ibv_send_wr const &send_wr,
                    struct ibv_send_wr *&bad_send_wr) {
-  spdlog::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
-                send_wr.sg_list->addr);
+  log::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
+             send_wr.sg_list->addr);
   check_rc(::ibv_post_send(qp_, const_cast<struct ibv_send_wr *>(&send_wr),
                            &bad_send_wr),
            "failed to post send");
@@ -199,9 +199,9 @@ void qp::post_recv(struct ibv_recv_wr const &recv_wr,
 
 void qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
                       struct ibv_recv_wr *&bad_recv_wr) const {
-  spdlog::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
-                fmt::ptr(recv_wr.sg_list),
-                recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
+  log::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
+             fmt::ptr(recv_wr.sg_list),
+             recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
   check_rc(::ibv_post_recv(qp_, const_cast<struct ibv_recv_wr *>(&recv_wr),
                            &bad_recv_wr),
            "failed to post recv");
@@ -408,14 +408,14 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
             [awaitable = awaitable_ptr,
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
-              spdlog::trace("send_awaitable start resume");
+              log::trace("send_awaitable start resume");
               awaitable->wc_ = wc;
               self->complete(awaitable->resume());
             });
 
         awaitable_ptr->suspend(callback);
-        spdlog::trace("send_awaitable: suspended: callback={}",
-                      fmt::ptr(callback));
+        log::trace("send_awaitable: suspended: callback={}",
+                   fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
@@ -425,7 +425,7 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
   return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
       [awaitable = std::shared_ptr<recv_awaitable>(std::move(awaitable))](
           auto &&self) mutable {
-        spdlog::trace("recv_awaitable: fn start");
+        log::trace("recv_awaitable: fn start");
         // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
         std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
 
@@ -435,14 +435,14 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
             [awaitable = awaitable_ptr,
              self = std::make_shared<std::decay_t<decltype(self)>>(
                  std::move(self))](struct ibv_wc const &wc) mutable {
-              spdlog::trace("recv_awaitable start resume");
+              log::trace("recv_awaitable start resume");
               awaitable->wc_ = wc;
               self->complete(awaitable->resume());
             });
 
         awaitable_ptr->suspend(callback);
-        spdlog::trace("recv_awaitable: suspended: callback={}",
-                      fmt::ptr(callback));
+        log::trace("recv_awaitable: suspended: callback={}",
+                   fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
@@ -575,7 +575,7 @@ bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
     qp_->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
-    spdlog::debug("destroy callback on error: {}", fmt::ptr(callback));
+    log::debug("destroy callback on error: {}", fmt::ptr(callback));
     executor::destroy_callback(callback);
     return false;
   }
@@ -596,8 +596,7 @@ qp::recv_result qp::recv_awaitable::resume() const {
   }
   check_wc_status(wc_.status, "failed to recv");
   if (wc_.wc_flags & IBV_WC_WITH_IMM) {
-    spdlog::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id,
-                  wc_.imm_data);
+    log::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id, wc_.imm_data);
     return std::make_pair(wc_.byte_len, wc_.imm_data);
   }
   return std::make_pair(wc_.byte_len, std::nullopt);
@@ -621,10 +620,9 @@ void qp::destroy() {
   }
   err();
   if (auto rc = ::ibv_destroy_qp(qp_); rc != 0) [[unlikely]] {
-    spdlog::error("failed to destroy qp {}: {}", fmt::ptr(qp_),
-                  strerror(errno));
+    log::error("failed to destroy qp {}: {}", fmt::ptr(qp_), strerror(errno));
   } else {
-    spdlog::trace("destroyed qp {}", fmt::ptr(qp_));
+    log::trace("destroyed qp {}", fmt::ptr(qp_));
   }
 }
 
@@ -633,10 +631,10 @@ void qp::err() {
   attr.qp_state = IBV_QPS_ERR;
 
   if (ibv_modify_qp(qp_, &attr, IBV_QP_STATE)) {
-    spdlog::error("failed to modify qp({}) to ERROR, error: {}\n",
-                  fmt::ptr(qp_), strerror(errno));
+    log::error("failed to modify qp({}) to ERROR, error: {}\n", fmt::ptr(qp_),
+               strerror(errno));
   } else {
-    spdlog::trace("qp({}) set to ERORR", fmt::ptr(qp_));
+    log::trace("qp({}) set to ERORR", fmt::ptr(qp_));
   }
 }
 

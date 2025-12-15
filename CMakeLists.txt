@@ -91,9 +91,8 @@ set(RDMAPP_SOURCE_FILES
   src/cq_poller.cc
   src/executor.cc
   src/mr.cc
+  src/logger.cc
 )
-
-set(RDMAPP_LINK_LIBRARIES ibverbs Threads::Threads spdlog::spdlog)
 
 add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
 
@@ -143,7 +142,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
 endif()
 
 target_compile_options(rdmapp PRIVATE ${RDMAPP_COMPILE_OPTIONS})
-target_link_libraries(rdmapp PUBLIC ${RDMAPP_LINK_LIBRARIES})
+target_link_libraries(rdmapp PUBLIC ibverbs Threads::Threads PRIVATE spdlog::spdlog)
 target_include_directories(rdmapp PUBLIC include)
 target_link_libraries(rdmapp PUBLIC asio)
 
@@ -165,7 +164,7 @@ if(RDMAPP_BUILD_EXAMPLES)
   add_library(rdmapp_examples STATIC ${RDMAPP_EXAMPLES_LIB_SOURCE_FILES})
   target_compile_options(rdmapp_examples ${RDMAPP_COMPILE_OPTIONS})
   target_include_directories(rdmapp_examples PUBLIC examples/include)
-  target_link_libraries(rdmapp_examples PUBLIC rdmapp)
+  target_link_libraries(rdmapp_examples PUBLIC rdmapp spdlog::spdlog)
   target_link_options(rdmapp_examples ${RDMAPP_LINK_OPTIONS})
   set(RDMAPP_EXAMPLES helloworld write_bw rpc)
 

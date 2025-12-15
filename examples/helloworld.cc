@@ -12,11 +12,12 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+#include "rdmapp/log.h"
 #include <rdmapp/mr.h>
 #include <rdmapp/rdmapp.h>
 
 int main(int argc, char *argv[]) {
-  spdlog::set_level(spdlog::level::debug);
+  rdmapp::log::setup(rdmapp::log::level::debug);
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);

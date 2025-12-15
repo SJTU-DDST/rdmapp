@@ -20,8 +20,6 @@
 #include <rdmapp/mr.h>
 #include <rdmapp/rdmapp.h>
 
-using namespace std::literals::chrono_literals;
-
 constexpr std::string_view msg = "this is an rdmapp based rpc simple example";
 
 using rpc_function = std::function<void()>;
@@ -81,7 +79,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
 }
 
 int main(int argc, char *argv[]) {
-  spdlog::set_level(spdlog::level::debug);
+  rdmapp::log::setup(rdmapp::log::level::debug);
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
