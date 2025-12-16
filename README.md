@@ -15,7 +15,7 @@ Initialize the device, create a protection domain and create a completion queue 
 #include <asio/asio.hpp>
 
 int main(int argc, char *argv[]) {
-  spdlog::set_level(spdlog::level::debug);
+  rdmapp::log::setup(rdmapp::log::level::debug);
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
