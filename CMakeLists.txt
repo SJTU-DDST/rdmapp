@@ -21,7 +21,7 @@ else()
 endif()
 
 option(RDMAPP_BUILD_DOCS "Build docs" OFF)
-option(RDMAPP_ASAN "Build with AddressSanitizer" OFF)
+option(RDMAPP_BUILD_ASAN "Build with AddressSanitizer" OFF)
 option(RDMAPP_BUILD_EXAMPLES_PYBIND "Build pybind11 example" OFF)
 option(RDMAPP_BUILD_NORTTI "Build without RTTI" ON)
 option(RDMAPP_BUILD_PIC "Build with -fPIC" OFF)
@@ -30,7 +30,7 @@ option(RDMAPP_BUILD_LTO "Build with -flto" OFF)
 function(print_options_compact)
   message(STATUS "[rdmapp] config:")
   message(STATUS "  RDMAPP_BUILD_DOCS: ${RDMAPP_BUILD_DOCS}")
-  message(STATUS "  RDMAPP_ASAN: ${RDMAPP_ASAN}")
+  message(STATUS "  RDMAPP_BUILD_ASAN: ${RDMAPP_BUILD_ASAN}")
   message(STATUS "  RDMAPP_BUILD_EXAMPLES: ${RDMAPP_BUILD_EXAMPLES}")
   message(STATUS "  RDMAPP_BUILD_EXAMPLES_PYBIND: ${RDMAPP_BUILD_EXAMPLES_PYBIND}")
   message(STATUS "  RDMAPP_BUILD_NORTTI: ${RDMAPP_BUILD_NORTTI}")
@@ -107,7 +107,6 @@ list(APPEND
 )
 list(APPEND
   RDMAPP_LINK_OPTIONS
-  PRIVATE
 )
 
 if(RDMAPP_BUILD_LTO)
@@ -129,9 +128,10 @@ if(RDMAPP_BUILD_PIC)
 else()
 endif()
 
-if(RDMAPP_ASAN)
+if(RDMAPP_BUILD_ASAN)
+  message(STATUS "[rdmapp] build: build with ASAN")
   list(APPEND RDMAPP_COMPILE_OPTIONS PRIVATE -fno-omit-frame-pointer -fsanitize=address)
-  list(APPEND RDMAPP_LINK_OPTIONS -fno-omit-frame-pointer -fsanitize=address)
+  list(APPEND RDMAPP_LINK_OPTIONS PUBLIC -fsanitize=address)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
@@ -149,6 +149,9 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
     )
   endif()
 endif()
+
+message(STATUS "[rdmapp/compile] options: ${RDMAPP_COMPILE_OPTIONS}")
+message(STATUS "[rdmapp/link] options: ${RDMAPP_LINK_OPTIONS}")
 
 target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
 target_link_libraries(rdmapp PUBLIC ibverbs Threads::Threads PRIVATE spdlog::spdlog_header_only)
