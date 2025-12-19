@@ -426,8 +426,8 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
 asio::awaitable<qp::recv_result>
 qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
   auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
-
-  return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
+  return asio::async_compose<decltype(asio::use_awaitable),
+                             void(std::exception_ptr, recv_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
         log::trace("recv_awaitable: fn start");
 
@@ -450,9 +450,9 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
             }
             if (auto self_ptr = self_ptr_view.lock(); self_ptr) {
               log::warn("recv_awaitable: cancelled by signal");
-              awaitable->exception_ = std::make_exception_ptr(
-                  std::runtime_error("qp: recv_awaitable: recv cancelled"));
-              self_ptr->complete(recv_result{}); // empty result
+              std::exception_ptr ex = std::make_exception_ptr(
+                  asio::system_error(asio::error::operation_aborted));
+              self_ptr->complete(ex, recv_result{}); // empty result
               return;
             }
             log::warn(
@@ -465,7 +465,7 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
              complete_called](struct ibv_wc const &wc) mutable {
               if (!complete_called->test_and_set(std::memory_order_relaxed)) {
                 awaitable->wc_ = wc;
-                self->complete(awaitable->resume());
+                self->complete(nullptr, awaitable->resume());
                 log::trace("recv_awaitable: start resume");
               } else {
                 log::warn("recv_awaitable: resumed by cancellation");
