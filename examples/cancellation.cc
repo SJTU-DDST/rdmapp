@@ -9,6 +9,7 @@
 #include <asio/use_future.hpp>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -43,20 +44,25 @@ static asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
 
   spdlog::info("waiting for another recv which will never come", buffer.size());
   co_await qp->recv(recv_buffer);
-
-  spdlog::error("should not reach here");
+  spdlog::critical("should not reach here");
   co_return;
 }
 
-asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
+asio::awaitable<void> server(std::unique_ptr<rdmapp::qp_acceptor> acceptor) {
   while (true) {
     auto qp = co_await acceptor->accept();
     if (!qp) {
       spdlog::error("server: failed to accept qp, skipped");
       continue;
     }
-    co_await handle_qp(qp);
+    try {
+      co_await handle_qp(qp);
+    } catch (std::exception &e) {
+      spdlog::error("handle_qp: error: msg={}", e.what());
+      break;
+    }
   }
+  co_return;
 }
 
 int main(int argc, char *argv[]) {
@@ -81,9 +87,9 @@ int main(int argc, char *argv[]) {
     });
 
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
+    auto acceptor = std::make_unique<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
     asio::co_spawn(
-        *io_ctx, server(acceptor),
+        *io_ctx, server(std::move(acceptor)),
         asio::bind_cancellation_slot(cancel_signal_.slot(), asio::detached));
 
     io_ctx->run();

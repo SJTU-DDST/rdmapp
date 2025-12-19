@@ -30,10 +30,11 @@ void cq_poller::worker(std::stop_token token) {
         executor_.process_wc(wc);
       }
     } catch (std::runtime_error &e) {
-      log::error("{}", e.what());
+      log::error("cq_poller: exception: {}", e.what());
       return;
     }
   }
+  log::debug("cq_poller: polling cqe exited");
 }
 
 } // namespace rdmapp
