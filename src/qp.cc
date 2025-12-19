@@ -1,9 +1,12 @@
 #include "rdmapp/qp.h"
 
+#include "asio/cancellation_signal.hpp"
+#include "asio/cancellation_type.hpp"
 #include <algorithm>
 #include <asio/awaitable.hpp>
 #include <asio/compose.hpp>
 #include <asio/use_awaitable.hpp>
+#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <cstdint>
@@ -422,22 +425,51 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
 
 asio::awaitable<qp::recv_result>
 qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
-  return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
-      [awaitable = std::shared_ptr<recv_awaitable>(std::move(awaitable))](
-          auto &&self) mutable {
+  auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
+  return asio::async_compose<decltype(asio::use_awaitable),
+                             void(std::exception_ptr, recv_result)>(
+      [awaitable = awaitable_ptr](auto &&self) mutable {
         log::trace("recv_awaitable: fn start");
-        // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
+
         std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
+        auto complete_called = std::make_shared<std::atomic_flag>();
+        auto self_ptr =
+            std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
+
+        if (asio::cancellation_slot slot = self_ptr->get_cancellation_slot();
+            slot.is_connected()) {
+          log::trace("recv_awaitable: connected to cancellation_slot");
+          slot.assign([complete_called, awaitable = awaitable_ptr,
+                       self_ptr_view = std::weak_ptr(self_ptr)](
+                          asio::cancellation_type type) mutable {
+            if (type == asio::cancellation_type::none) {
+              return;
+            }
+            if (complete_called->test_and_set(std::memory_order_relaxed)) {
+              return;
+            }
+            if (auto self_ptr = self_ptr_view.lock(); self_ptr) {
+              log::warn("recv_awaitable: cancelled by signal");
+              std::exception_ptr ex = std::make_exception_ptr(
+                  asio::system_error(asio::error::operation_aborted));
+              self_ptr->complete(ex, recv_result{}); // empty result
+              return;
+            }
+            log::warn(
+                "recv_awaitable: cancelled by signal, but recv done, skipped");
+          });
+        }
 
         auto callback = executor::make_callback(
-            // NOTE: 注意之类的捕获顺序,
-            // 如果先捕获self那就awaitable就被move走了
-            [awaitable = awaitable_ptr,
-             self = std::make_shared<std::decay_t<decltype(self)>>(
-                 std::move(self))](struct ibv_wc const &wc) mutable {
-              log::trace("recv_awaitable start resume");
-              awaitable->wc_ = wc;
-              self->complete(awaitable->resume());
+            [self = self_ptr, awaitable = awaitable_ptr,
+             complete_called](struct ibv_wc const &wc) mutable {
+              if (!complete_called->test_and_set(std::memory_order_relaxed)) {
+                awaitable->wc_ = wc;
+                self->complete(nullptr, awaitable->resume());
+                log::trace("recv_awaitable: start resume");
+              } else {
+                log::warn("recv_awaitable: resumed by cancellation");
+              }
             });
 
         awaitable_ptr->suspend(callback);
@@ -547,10 +579,10 @@ asio::awaitable<qp::send_result> qp::compare_and_swap(mr_view remote_mr,
 qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
                                    std::span<std::byte> buffer)
     : qp_(qp), local_mr_(std::make_shared<local_mr>(
-                   qp_->pd_->reg_mr(buffer.data(), buffer.size()))),
-      local_mr_view_(*local_mr_), wc_() {}
+                   qp->pd_->reg_mr(buffer.data(), buffer.size()))),
+      local_mr_view_(local_mr_), wc_() {}
 
-qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp, mr_view local_mr)
+qp::recv_awaitable::recv_awaitable(std::weak_ptr<qp> qp, mr_view local_mr)
     : qp_(qp), local_mr_view_(local_mr), wc_() {}
 
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
@@ -572,7 +604,15 @@ bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
   recv_wr.sg_list = recv_sge_list;
 
   try {
-    qp_->post_recv(recv_wr, bad_recv_wr);
+    auto qp = qp_.lock();
+    if (!qp) {
+      exception_ = std::make_exception_ptr(
+          std::runtime_error("qp expired, use_count=0"));
+      log::debug("destroy callback on error: {}", fmt::ptr(callback));
+      executor::destroy_callback(callback);
+      return false;
+    }
+    qp->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
     log::debug("destroy callback on error: {}", fmt::ptr(callback));

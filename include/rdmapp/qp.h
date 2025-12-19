@@ -164,7 +164,7 @@ public:
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
   class recv_awaitable {
     friend class qp;
-    std::shared_ptr<qp> qp_;
+    std::weak_ptr<qp> qp_;
     std::shared_ptr<local_mr> local_mr_;
     mr_view local_mr_view_;
     std::exception_ptr exception_;
@@ -174,7 +174,7 @@ public:
   public:
     recv_awaitable(recv_awaitable &&) = default;
     recv_awaitable(recv_awaitable const &) = delete;
-    recv_awaitable(std::shared_ptr<qp> qp, mr_view local_mr);
+    recv_awaitable(std::weak_ptr<qp> qp, mr_view local_mr);
     recv_awaitable(std::shared_ptr<qp> qp, std::span<std::byte> buffer);
 
     bool suspend(executor::callback_ptr fn) noexcept;
