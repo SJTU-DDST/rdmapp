@@ -1,9 +1,11 @@
 #include "rdmapp/qp.h"
 
+#include "asio/cancellation_signal.hpp"
 #include <algorithm>
 #include <asio/awaitable.hpp>
 #include <asio/compose.hpp>
 #include <asio/use_awaitable.hpp>
+#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <cstdint>
@@ -422,22 +424,43 @@ qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
 
 asio::awaitable<qp::recv_result>
 qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
+  auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
+
   return asio::async_compose<decltype(asio::use_awaitable), void(recv_result)>(
-      [awaitable = std::shared_ptr<recv_awaitable>(std::move(awaitable))](
-          auto &&self) mutable {
+      [awaitable = awaitable_ptr](auto &&self) mutable {
         log::trace("recv_awaitable: fn start");
-        // NOTE: 此处需要保留一份awaitable副本, 具体原因看上面的注释
+
         std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
+        auto complete_called = std::make_shared<std::atomic_flag>();
+        auto self_ptr =
+            std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
+
+        if (asio::cancellation_slot slot = self_ptr->get_cancellation_slot();
+            slot.is_connected()) {
+          log::trace("recv_awaitable: connected to cancellation_slot");
+          slot.assign([awaitable, complete_called,
+                       self = self_ptr](asio::cancellation_type type) mutable {
+            if (type != asio::cancellation_type::none) {
+              if (!complete_called->test_and_set()) {
+                log::warn("recv_awaitable: cancelled by signal");
+                awaitable->exception_ = std::make_exception_ptr(
+                    std::runtime_error("qp: recv_awaitable: recv cancelled"));
+                self->complete(recv_result{}); // empty result
+              }
+            }
+          });
+        }
 
         auto callback = executor::make_callback(
-            // NOTE: 注意之类的捕获顺序,
-            // 如果先捕获self那就awaitable就被move走了
-            [awaitable = awaitable_ptr,
-             self = std::make_shared<std::decay_t<decltype(self)>>(
-                 std::move(self))](struct ibv_wc const &wc) mutable {
-              log::trace("recv_awaitable start resume");
-              awaitable->wc_ = wc;
-              self->complete(awaitable->resume());
+            [self = self_ptr, awaitable = awaitable_ptr,
+             complete_called](struct ibv_wc const &wc) mutable {
+              if (!complete_called->test_and_set()) {
+                awaitable->wc_ = wc;
+                self->complete(awaitable->resume());
+                log::trace("recv_awaitable: start resume");
+              } else {
+                log::warn("recv_awaitable: resumed by cancellation");
+              }
             });
 
         awaitable_ptr->suspend(callback);
