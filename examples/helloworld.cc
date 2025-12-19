@@ -12,7 +12,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-#include "rdmapp/log.h"
+#include <rdmapp/log.h>
 #include <rdmapp/mr.h>
 #include <rdmapp/rdmapp.h>
 
