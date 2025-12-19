@@ -1,6 +1,7 @@
 #include "rdmapp/qp.h"
 
 #include "asio/cancellation_signal.hpp"
+#include "asio/cancellation_type.hpp"
 #include <algorithm>
 #include <asio/awaitable.hpp>
 #include <asio/compose.hpp>
@@ -439,22 +440,30 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
             slot.is_connected()) {
           log::trace("recv_awaitable: connected to cancellation_slot");
           slot.assign([complete_called, awaitable = awaitable_ptr,
-                       self = self_ptr](asio::cancellation_type type) mutable {
-            if (type != asio::cancellation_type::none) {
-              if (!complete_called->test_and_set()) {
-                log::warn("recv_awaitable: cancelled by signal");
-                awaitable->exception_ = std::make_exception_ptr(
-                    std::runtime_error("qp: recv_awaitable: recv cancelled"));
-                self->complete(recv_result{}); // empty result
-              }
+                       self_ptr_view = std::weak_ptr(self_ptr)](
+                          asio::cancellation_type type) mutable {
+            if (type == asio::cancellation_type::none) {
+              return;
             }
+            if (complete_called->test_and_set(std::memory_order_relaxed)) {
+              return;
+            }
+            if (auto self_ptr = self_ptr_view.lock(); self_ptr) {
+              log::warn("recv_awaitable: cancelled by signal");
+              awaitable->exception_ = std::make_exception_ptr(
+                  std::runtime_error("qp: recv_awaitable: recv cancelled"));
+              self_ptr->complete(recv_result{}); // empty result
+              return;
+            }
+            log::warn(
+                "recv_awaitable: cancelled by signal, but recv done, skipped");
           });
         }
 
         auto callback = executor::make_callback(
             [self = self_ptr, awaitable = awaitable_ptr,
              complete_called](struct ibv_wc const &wc) mutable {
-              if (!complete_called->test_and_set()) {
+              if (!complete_called->test_and_set(std::memory_order_relaxed)) {
                 awaitable->wc_ = wc;
                 self->complete(awaitable->resume());
                 log::trace("recv_awaitable: start resume");
