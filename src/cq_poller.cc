@@ -14,7 +14,7 @@
 namespace rdmapp {
 
 cq_poller::cq_poller(std::shared_ptr<cq> cq, size_t batch_size)
-    : cq_(cq), poller_thread_(&cq_poller::worker, this), wc_vec_(batch_size) {}
+    : cq_(cq), wc_vec_(batch_size), poller_thread_(&cq_poller::worker, this) {}
 
 cq_poller::~cq_poller() {}
 
