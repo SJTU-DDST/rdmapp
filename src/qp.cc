@@ -438,7 +438,7 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
         if (asio::cancellation_slot slot = self_ptr->get_cancellation_slot();
             slot.is_connected()) {
           log::trace("recv_awaitable: connected to cancellation_slot");
-          slot.assign([awaitable, complete_called,
+          slot.assign([complete_called, awaitable = awaitable_ptr,
                        self = self_ptr](asio::cancellation_type type) mutable {
             if (type != asio::cancellation_type::none) {
               if (!complete_called->test_and_set()) {
