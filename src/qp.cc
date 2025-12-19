@@ -290,10 +290,11 @@ static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
 
 bool qp::send_awaitable::await_ready() const noexcept { return false; }
 bool qp::send_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
-  auto callback = executor::make_callback([h, this](struct ibv_wc const &wc) {
-    wc_ = wc;
-    h.resume();
-  });
+  auto callback =
+      executor::make_callback([h, this](struct ibv_wc const &wc) noexcept {
+        wc_ = wc;
+        h.resume();
+      });
   return this->suspend(callback);
 }
 
@@ -351,9 +352,6 @@ constexpr bool qp::send_awaitable::is_atomic() const {
 }
 
 qp::send_result qp::send_awaitable::resume() const {
-  if (exception_) [[unlikely]] {
-    std::rethrow_exception(exception_);
-  }
   check_wc_status(wc_.status, "failed to send");
   /* ref: https://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
    * byte_len: The number of bytes transferred. Relevant if the Receive Queue
@@ -365,7 +363,12 @@ qp::send_result qp::send_awaitable::resume() const {
   return opcode_ == IBV_WR_RDMA_WRITE ? write_byte_len_ : wc_.byte_len;
 }
 
-uint32_t qp::send_awaitable::await_resume() const { return resume(); }
+uint32_t qp::send_awaitable::await_resume() const {
+  if (exception_) [[unlikely]] {
+    std::rethrow_exception(exception_);
+  }
+  return resume();
+}
 /*
 NOTE: 小心对于self的move
 
@@ -402,18 +405,22 @@ int main() {
 
 asio::awaitable<qp::send_result>
 qp::make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable) {
-  return asio::async_compose<decltype(asio::use_awaitable), void(send_result)>(
-      [awaitable = std::shared_ptr<send_awaitable>(std::move(awaitable))](
-          auto &&self) mutable {
+
+  std::shared_ptr<send_awaitable> awaitable_ptr =
+      std::shared_ptr<send_awaitable>(std::move(awaitable));
+  return asio::async_compose<decltype(asio::use_awaitable),
+                             void(std::exception_ptr, send_result)>(
+      [awaitable = awaitable_ptr](auto &&self) mutable {
         std::shared_ptr<send_awaitable> awaitable_ptr = awaitable;
+        auto self_ptr =
+            std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
 
         auto callback = executor::make_callback(
             [awaitable = awaitable_ptr,
-             self = std::make_shared<std::decay_t<decltype(self)>>(
-                 std::move(self))](struct ibv_wc const &wc) mutable {
+             self = self_ptr](struct ibv_wc const &wc) mutable noexcept {
               log::trace("send_awaitable start resume");
               awaitable->wc_ = wc;
-              self->complete(awaitable->resume());
+              self->complete(awaitable->exception_, awaitable->resume());
             });
 
         awaitable_ptr->suspend(callback);
@@ -462,10 +469,10 @@ qp::make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable) {
 
         auto callback = executor::make_callback(
             [self = self_ptr, awaitable = awaitable_ptr,
-             complete_called](struct ibv_wc const &wc) mutable {
+             complete_called](struct ibv_wc const &wc) mutable noexcept {
               if (!complete_called->test_and_set(std::memory_order_relaxed)) {
                 awaitable->wc_ = wc;
-                self->complete(nullptr, awaitable->resume());
+                self->complete(awaitable->exception_, awaitable->resume());
                 log::trace("recv_awaitable: start resume");
               } else {
                 log::warn("recv_awaitable: resumed by cancellation");
@@ -623,17 +630,15 @@ bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
 }
 
 bool qp::recv_awaitable::await_suspend(std::coroutine_handle<> h) noexcept {
-  auto callback = executor::make_callback([h, this](struct ibv_wc const &wc) {
-    wc_ = wc;
-    h.resume();
-  });
+  auto callback =
+      executor::make_callback([h, this](struct ibv_wc const &wc) noexcept {
+        wc_ = wc;
+        h.resume();
+      });
   return this->suspend(callback);
 }
 
 qp::recv_result qp::recv_awaitable::resume() const {
-  if (exception_) [[unlikely]] {
-    std::rethrow_exception(exception_);
-  }
   check_wc_status(wc_.status, "failed to recv");
   if (wc_.wc_flags & IBV_WC_WITH_IMM) {
     log::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id, wc_.imm_data);
@@ -642,7 +647,12 @@ qp::recv_result qp::recv_awaitable::resume() const {
   return std::make_pair(wc_.byte_len, std::nullopt);
 }
 
-qp::recv_result qp::recv_awaitable::await_resume() const { return resume(); }
+qp::recv_result qp::recv_awaitable::await_resume() const {
+  if (exception_) [[unlikely]] {
+    std::rethrow_exception(exception_);
+  }
+  return resume();
+}
 
 asio::awaitable<qp::recv_result> qp::recv(std::span<std::byte> buffer) {
   return make_asio_awaitable(
@@ -651,7 +661,7 @@ asio::awaitable<qp::recv_result> qp::recv(std::span<std::byte> buffer) {
 
 asio::awaitable<qp::recv_result> qp::recv(mr_view local_mr) {
   return make_asio_awaitable(
-      std::make_unique<qp::recv_awaitable>(this->shared_from_this(), local_mr));
+      std::make_unique<qp::recv_awaitable>(this->weak_from_this(), local_mr));
 }
 
 void qp::destroy() {

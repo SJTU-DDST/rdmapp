@@ -26,6 +26,7 @@ option(RDMAPP_BUILD_EXAMPLES_PYBIND "Build pybind11 example" OFF)
 option(RDMAPP_BUILD_NORTTI "Build without RTTI" ON)
 option(RDMAPP_BUILD_PIC "Build with -fPIC" OFF)
 option(RDMAPP_BUILD_LTO "Build with -flto" OFF)
+option(RDMAPP_BUILD_DEBUG "Build with debug info" OFF)
 
 function(print_options_compact)
   message(STATUS "[rdmapp] config:")
@@ -36,6 +37,7 @@ function(print_options_compact)
   message(STATUS "  RDMAPP_BUILD_NORTTI: ${RDMAPP_BUILD_NORTTI}")
   message(STATUS "  RDMAPP_BUILD_PIC: ${RDMAPP_BUILD_PIC}")
   message(STATUS "  RDMAPP_BUILD_LTO: ${RDMAPP_BUILD_LTO}")
+  message(STATUS "  RDMAPP_BUILD_DEBUG: ${RDMAPP_BUILD_DEBUG}")
 endfunction()
 
 if(RDMAPP_BUILD_EXAMPLES_PYBIND)
@@ -97,6 +99,10 @@ set(RDMAPP_SOURCE_FILES
 )
 
 add_library(rdmapp STATIC ${RDMAPP_SOURCE_FILES})
+
+if(RDMAPP_BUILD_DEBUG)
+  target_compile_definitions(rdmapp PUBLIC RDMAPP_BUILD_DEBUG)
+endif()
 
 list(APPEND
   RDMAPP_COMPILE_OPTIONS

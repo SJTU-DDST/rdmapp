@@ -5,7 +5,9 @@
 
 #include <infiniband/verbs.h>
 
+#ifdef RDMAPP_BUILD_DEBUG
 #include "rdmapp/detail/logger.h"
+#endif
 
 namespace rdmapp {
 
@@ -49,7 +51,9 @@ public:
    */
   template <class T> static callback_ptr make_callback(T &&cb) {
     auto ptr = new executor::callback_fn(std::forward<T>(cb));
+#ifdef RDMAPP_BUILD_DEBUG
     log::trace("executor: make_callback: {}", fmt::ptr(ptr));
+#endif
     return ptr;
   }
 
