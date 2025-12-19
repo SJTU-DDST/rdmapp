@@ -84,10 +84,11 @@ public:
   // TODO: maybe use send_result in the future
   using send_result = uint32_t;
 
-  class send_awaitable : public std::enable_shared_from_this<send_awaitable> {
+  class [[nodiscard]] send_awaitable
+      : public std::enable_shared_from_this<send_awaitable> {
     friend class qp;
-    std::shared_ptr<qp> qp_;
-    std::shared_ptr<local_mr> local_mr_ [[maybe_unused]];
+    std::weak_ptr<qp> qp_;
+    std::unique_ptr<local_mr> local_mr_ [[maybe_unused]];
     mr_view local_mr_view_;
     mr_view remote_mr_view_;
     std::exception_ptr exception_;
@@ -118,15 +119,15 @@ public:
     const enum ibv_wr_opcode opcode_;
 
   public:
-    send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode);
-    send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr);
-    send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr, uint32_t imm);
-    send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr, uint64_t add);
-    send_awaitable(std::shared_ptr<qp> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t compare, uint64_t swap);
 
@@ -162,10 +163,10 @@ public:
   make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable);
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
-  class recv_awaitable {
+  class [[nodiscard]] recv_awaitable {
     friend class qp;
     std::weak_ptr<qp> qp_;
-    std::shared_ptr<local_mr> local_mr_;
+    std::unique_ptr<local_mr> local_mr_;
     mr_view local_mr_view_;
     std::exception_ptr exception_;
     struct ibv_wc wc_;
