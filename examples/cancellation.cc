@@ -1,3 +1,10 @@
+/*
+ * for this program, you will see that the server is waiting for
+ * a recv which will never come, so press CTRL+C on keyboard to
+ * send a SIGINT, asio will handle it and cancel the io_context,
+ * and will cancel the recv coroutine; this is an example for
+ * gracefully shutdown
+ */
 #include "qp_acceptor.h"
 #include "qp_connector.h"
 #include <asio/bind_cancellation_slot.hpp>

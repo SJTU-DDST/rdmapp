@@ -579,10 +579,10 @@ asio::awaitable<qp::send_result> qp::compare_and_swap(mr_view remote_mr,
 qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp,
                                    std::span<std::byte> buffer)
     : qp_(qp), local_mr_(std::make_shared<local_mr>(
-                   qp_->pd_->reg_mr(buffer.data(), buffer.size()))),
-      local_mr_view_(*local_mr_), wc_() {}
+                   qp->pd_->reg_mr(buffer.data(), buffer.size()))),
+      local_mr_view_(local_mr_), wc_() {}
 
-qp::recv_awaitable::recv_awaitable(std::shared_ptr<qp> qp, mr_view local_mr)
+qp::recv_awaitable::recv_awaitable(std::weak_ptr<qp> qp, mr_view local_mr)
     : qp_(qp), local_mr_view_(local_mr), wc_() {}
 
 bool qp::recv_awaitable::await_ready() const noexcept { return false; }
@@ -604,7 +604,15 @@ bool qp::recv_awaitable::suspend(executor::callback_ptr callback) noexcept {
   recv_wr.sg_list = recv_sge_list;
 
   try {
-    qp_->post_recv(recv_wr, bad_recv_wr);
+    auto qp = qp_.lock();
+    if (!qp) {
+      exception_ = std::make_exception_ptr(
+          std::runtime_error("qp expired, use_count=0"));
+      log::debug("destroy callback on error: {}", fmt::ptr(callback));
+      executor::destroy_callback(callback);
+      return false;
+    }
+    qp->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
     log::debug("destroy callback on error: {}", fmt::ptr(callback));
