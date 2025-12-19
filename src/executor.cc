@@ -16,7 +16,10 @@ void executor::process_wc(struct ibv_wc const &wc) {
 
 void executor::shutdown() {}
 
-void executor::destroy_callback(callback_ptr cb) { delete cb; }
+void executor::destroy_callback(callback_ptr cb) {
+  log::trace("executor: delete_callback: {}", fmt::ptr(cb));
+  delete cb;
+}
 
 executor::~executor() { shutdown(); }
 

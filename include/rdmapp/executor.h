@@ -5,6 +5,8 @@
 
 #include <infiniband/verbs.h>
 
+#include "rdmapp/detail/logger.h"
+
 namespace rdmapp {
 
 /**
@@ -46,7 +48,9 @@ public:
    * @return callback_ptr The callback function pointer.
    */
   template <class T> static callback_ptr make_callback(T &&cb) {
-    return new executor::callback_fn(std::forward<T>(cb));
+    auto ptr = new executor::callback_fn(std::forward<T>(cb));
+    log::trace("executor: make_callback: {}", fmt::ptr(ptr));
+    return ptr;
   }
 
   /**
