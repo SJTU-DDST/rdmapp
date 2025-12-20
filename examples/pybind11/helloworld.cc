@@ -4,7 +4,6 @@
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
-#include <asio/detail/socket_ops.hpp>
 #include <asio/this_coro.hpp>
 #include <asio/use_future.hpp>
 #include <cassert>

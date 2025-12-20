@@ -3,7 +3,6 @@
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
-#include <asio/detail/socket_ops.hpp>
 #include <asio/signal_set.hpp>
 #include <asio/this_coro.hpp>
 #include <cassert>
