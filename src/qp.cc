@@ -310,7 +310,7 @@ bool qp::send_awaitable::suspend(executor::callback_ptr callback) noexcept {
   send_wr.send_flags = IBV_SEND_SIGNALED;
   send_wr.sg_list = &send_sge;
   if (is_rdma()) {
-    assert(remote_mr_.addr() != nullptr);
+    assert(remote_mr_view_.addr() != nullptr);
     send_wr.wr.rdma.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.rdma.rkey = remote_mr_view_.rkey();
@@ -320,7 +320,7 @@ bool qp::send_awaitable::suspend(executor::callback_ptr callback) noexcept {
       write_byte_len_ = local_mr_view_.length();
     }
   } else if (is_atomic()) {
-    assert(remote_mr_.addr() != nullptr);
+    assert(remote_mr_view_.addr() != nullptr);
     send_wr.wr.atomic.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.atomic.rkey = remote_mr_view_.rkey();
