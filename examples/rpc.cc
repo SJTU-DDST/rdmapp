@@ -63,7 +63,7 @@ asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
 
 asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   auto qp = co_await connector->connect();
-  char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+  std::byte remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   auto remote_mr_serialized_data =
       std::as_writable_bytes(std::span(remote_mr_serialized));
   co_await qp->recv(remote_mr_serialized_data);

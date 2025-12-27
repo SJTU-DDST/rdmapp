@@ -23,11 +23,11 @@ constexpr size_t kQP = 3;
 std::array<std::atomic<size_t>, kQP> gSendCounts;
 
 asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp, int id) {
-  std::vector<uint8_t> buffer;
+  std::vector<std::byte> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size()));
-  char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+  std::byte remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   auto remote_mr_serialized_data =
       std::as_writable_bytes(std::span(remote_mr_serialized));
   co_await qp->recv(remote_mr_serialized_data);
@@ -43,7 +43,7 @@ asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp, int id) {
 }
 
 asio::awaitable<void> handler(std::shared_ptr<rdmapp::qp> qp) {
-  std::vector<uint8_t> buffer;
+  std::vector<std::byte> buffer;
   buffer.resize(kBufferSizeBytes);
   auto local_mr = std::make_shared<rdmapp::local_mr>(
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size()));

@@ -36,8 +36,8 @@ local_mr::~mr() {
   }
 }
 
-std::vector<uint8_t> local_mr::serialize() const {
-  std::vector<uint8_t> buffer;
+std::vector<std::byte> local_mr::serialize() const {
+  std::vector<std::byte> buffer;
   auto it = std::back_inserter(buffer);
   detail::serialize(reinterpret_cast<uint64_t>(mr_->addr), it);
   detail::serialize(mr_->length, it);

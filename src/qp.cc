@@ -63,12 +63,12 @@ qp::qp(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<cq> recv_cq,
   init();
 }
 
-std::vector<uint8_t> &qp::user_data() { return user_data_; }
+std::vector<std::byte> &qp::user_data() { return user_data_; }
 
 std::shared_ptr<pd> qp::pd_ptr() const { return pd_; }
 
-std::vector<uint8_t> qp::serialize() const {
-  std::vector<uint8_t> buffer;
+std::vector<std::byte> qp::serialize() const {
+  std::vector<std::byte> buffer;
   auto it = std::back_inserter(buffer);
   detail::serialize(pd_->device_ptr()->lid(), it);
   detail::serialize(qp_->qp_num, it);

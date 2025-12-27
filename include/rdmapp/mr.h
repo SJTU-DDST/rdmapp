@@ -70,9 +70,9 @@ public:
   /**
    * @brief Serialize the memory region handle to be sent to a remote peer.
    *
-   * @return std::vector<uint8_t> The serialized memory region handle.
+   * @return std::vector<std::byte> The serialized memory region handle.
    */
-  std::vector<uint8_t> serialize() const;
+  std::vector<std::byte> serialize() const;
 
   /**
    * @brief Get the address of the memory region.

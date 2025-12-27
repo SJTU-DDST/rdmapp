@@ -44,7 +44,7 @@ struct deserialized_qp {
     detail::deserialize(it, des_qp.header.gid);
     return des_qp;
   }
-  std::vector<uint8_t> user_data;
+  std::vector<std::byte> user_data;
 };
 
 /**
@@ -63,7 +63,7 @@ class qp : public noncopyable, public std::enable_shared_from_this<qp> {
   std::shared_ptr<cq> recv_cq_;
   std::shared_ptr<cq> send_cq_;
   std::shared_ptr<srq> srq_;
-  std::vector<uint8_t> user_data_;
+  std::vector<std::byte> user_data_;
 
   /**
    * @brief Creates a new Queue Pair. The Queue Pair will be in the RESET state.
@@ -466,17 +466,17 @@ public:
    * @brief This function serializes a Queue Pair prepared to be sent to a
    * buffer.
    *
-   * @return std::vector<uint8_t> The serialized QP.
+   * @return std::vector<std::byte> The serialized QP.
    */
-  std::vector<uint8_t> serialize() const;
+  std::vector<std::byte> serialize() const;
 
   /**
    * @brief This function provides access to the extra user data of the Queue
    * Pair.
    *
-   * @return std::vector<uint8_t>& The extra user data.
+   * @return std::vector<std::byte>& The extra user data.
    */
-  std::vector<uint8_t> &user_data();
+  std::vector<std::byte> &user_data();
 
   /**
    * @brief This function provides access to the Protection Domain of the

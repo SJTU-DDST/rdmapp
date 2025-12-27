@@ -5,7 +5,6 @@
 #include <asio/ip/tcp.hpp>
 #include <asio/read.hpp>
 #include <asio/write.hpp>
-#include <cstdint>
 #include <spdlog/spdlog.h>
 
 #include <rdmapp/qp.h>
@@ -23,7 +22,7 @@ asio::awaitable<void> send_qp(rdmapp::qp const &qp,
 
 asio::awaitable<rdmapp::deserialized_qp>
 recv_qp(asio::ip::tcp::socket &socket) {
-  std::array<uint8_t, rdmapp::deserialized_qp::qp_header::kSerializedSize>
+  std::array<std::byte, rdmapp::deserialized_qp::qp_header::kSerializedSize>
       header;
   auto buffer = asio::buffer(header);
 

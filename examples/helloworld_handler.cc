@@ -102,7 +102,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   co_await qp->send(send_buffer);
   spdlog::info("sent to server: {}", buffer);
   /* Read/Write */
-  char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+  std::byte remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   auto remote_mr_serialized_data =
       std::as_writable_bytes(std::span(remote_mr_serialized));
   co_await qp->recv(remote_mr_serialized_data);
@@ -117,7 +117,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   send_buffer = std::as_bytes(std::span(buffer));
   co_await qp->write_with_imm(remote_mr, send_buffer, 1);
   /* Atomic Fetch-and-Add (FA)/Compare-and-Swap (CS) */
-  char counter_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+  std::byte counter_mr_serialized[rdmapp::remote_mr::kSerializedSize];
   recv_buffer = std::as_writable_bytes(std::span(counter_mr_serialized));
   co_await qp->recv(recv_buffer);
   auto counter_mr = rdmapp::remote_mr::deserialize(counter_mr_serialized);
@@ -134,7 +134,7 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
   co_await qp->write_with_imm(counter_mr, cnt_buffer, 1);
 
   {
-    char remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
+    std::byte remote_mr_serialized[rdmapp::remote_mr::kSerializedSize];
     auto remote_mr_serialized_data =
         std::as_writable_bytes(std::span(remote_mr_serialized));
     co_await qp->recv(remote_mr_serialized_data);
