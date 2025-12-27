@@ -143,6 +143,14 @@ public:
   mr(mr<tags::mr::remote> const &other) = default;
 
   /**
+   * @brief Copy Assignment for remote mr
+   *
+   * @param other The other remote mr object to copy from.
+   */
+
+  mr<tags::mr::remote> &operator=(mr<tags::mr::remote> const &other) = default;
+
+  /**
    * @brief Get the address of the remote memory region.
    *
    * @return void* The address of the remote memory region.
