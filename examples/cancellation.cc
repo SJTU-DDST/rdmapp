@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
   default: {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
               << " [server_ip] [port] for client" << std::endl;
-    ::exit(-1);
+    return -1;
   }
   }
 
