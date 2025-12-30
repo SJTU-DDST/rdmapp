@@ -5,7 +5,7 @@
 namespace rdmapp {
 executor::executor() {}
 
-void executor::process_wc(struct ibv_wc const &wc) {
+void executor::process_wc(struct ibv_wc const &wc) noexcept {
   log::trace("process_wc: {:#x}", wc.wr_id);
   auto cb = reinterpret_cast<callback_ptr>(wc.wr_id);
   // NOTEL wc should not throw exception

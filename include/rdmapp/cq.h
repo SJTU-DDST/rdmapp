@@ -13,8 +13,6 @@
 
 namespace rdmapp {
 
-class qp;
-
 /**
  * @brief This class is an abstraction of a Completion Queue.
  *
@@ -22,7 +20,7 @@ class qp;
 class cq : public noncopyable {
   std::shared_ptr<device> device_;
   struct ibv_cq *cq_;
-  friend class qp;
+  template <typename ResumeStrategy> friend class queue_pair;
 
 public:
   /**

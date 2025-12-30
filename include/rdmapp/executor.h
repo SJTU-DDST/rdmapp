@@ -31,7 +31,7 @@ public:
    *
    * @param wc The completion entry to process.
    */
-  void process_wc(struct ibv_wc const &wc);
+  void process_wc(struct ibv_wc const &wc) noexcept;
 
   /**
    * @brief Shutdown the executor.
