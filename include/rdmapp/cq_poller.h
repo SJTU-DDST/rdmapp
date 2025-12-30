@@ -14,10 +14,11 @@ namespace rdmapp {
  * @brief This class is used to poll a completion queue.
  *
  */
-class cq_poller {
-  std::shared_ptr<cq> cq_;
-  executor executor_;
+
+template <ExecutorType Executor> class basic_cq_poller {
   std::vector<struct ibv_wc> wc_vec_;
+  std::shared_ptr<cq> cq_;
+  std::unique_ptr<Executor> executor_;
 
   std::jthread poller_thread_;
   void worker(std::stop_token token);
@@ -29,9 +30,14 @@ public:
    * @param cq The completion queue to poll.
    * @param batch_size The number of completion entries to poll at a time.
    */
-  cq_poller(std::shared_ptr<cq> cq, size_t batch_size = 16);
+  basic_cq_poller(
+      std::shared_ptr<cq> cq,
+      std::unique_ptr<Executor> executor = std::make_unique<Executor>(),
+      size_t batch_size = 16);
 
-  ~cq_poller();
+  ~basic_cq_poller();
 };
+
+using cq_poller = basic_cq_poller<executor>;
 
 } // namespace rdmapp

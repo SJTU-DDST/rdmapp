@@ -14,28 +14,37 @@
 
 namespace rdmapp {
 
-cq_poller::cq_poller(std::shared_ptr<cq> cq, size_t batch_size)
-    : cq_(cq), wc_vec_(batch_size), poller_thread_(&cq_poller::worker, this) {}
+template <ExecutorType Executor>
+basic_cq_poller<Executor>::basic_cq_poller(std::shared_ptr<cq> cq,
+                                           std::unique_ptr<Executor> executor,
+                                           size_t batch_size)
+    : wc_vec_(batch_size), cq_(cq), executor_(std::move(executor)),
+      poller_thread_(&basic_cq_poller::worker, this) {}
 
-cq_poller::~cq_poller() {}
+template <ExecutorType Executor>
+basic_cq_poller<Executor>::~basic_cq_poller() {}
 
-void cq_poller::worker(std::stop_token token) {
-  log::debug("cq_poller[{}]: polling cqe", std::this_thread::get_id());
+template <ExecutorType Executor>
+void basic_cq_poller<Executor>::worker(std::stop_token token) {
+  log::debug("cq_poller[thread={}]: polling cqe", std::this_thread::get_id());
   while (!token.stop_requested()) {
     try {
-      auto nr_wc = cq_->poll(wc_vec_);
-      for (size_t i = 0; i < nr_wc; ++i) {
-        auto &wc = wc_vec_[i];
-        log::trace("polled cqe wr_id={:#x} status={}", wc.wr_id,
-                   static_cast<int>(wc.status));
-        executor_.process_wc(wc);
-      }
+      size_t nr_wc = cq_->poll(wc_vec_);
+      if (!nr_wc)
+        continue;
+      log::trace("polled cqe: nr_wc={} ", nr_wc);
+      executor_->process_wc({wc_vec_.begin(), nr_wc});
     } catch (std::runtime_error &e) {
-      log::error("cq_poller: exception: {}", e.what());
+      log::error("cq_poller[thread={}: exception: {}",
+                 std::this_thread::get_id(), e.what());
       return;
     }
   }
-  log::debug("cq_poller[{}]: polling cqe exited", std::this_thread::get_id());
+  log::debug("cq_poller[thread={}]: polling cqe exited",
+             std::this_thread::get_id());
 }
+
+template class basic_cq_poller<basic_executor<ThisThread>>;
+template class basic_cq_poller<basic_executor<WorkerThread>>;
 
 } // namespace rdmapp

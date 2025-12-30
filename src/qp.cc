@@ -337,7 +337,7 @@ template <typename ResumeStrategy>
 bool queue_pair<ResumeStrategy>::send_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
   auto callback =
-      executor::make_callback([h, this](struct ibv_wc const &wc) noexcept {
+      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
         wc_ = wc;
         h.resume();
       });
@@ -346,7 +346,7 @@ bool queue_pair<ResumeStrategy>::send_awaitable::await_suspend(
 
 template <typename ResumeStrategy>
 bool queue_pair<ResumeStrategy>::send_awaitable::suspend(
-    executor::callback_ptr callback) noexcept {
+    executor_t::callback_ptr callback) noexcept {
   auto send_sge = fill_local_sge(local_mr_view_);
 
   struct ibv_send_wr send_wr = {};
@@ -384,14 +384,14 @@ bool queue_pair<ResumeStrategy>::send_awaitable::suspend(
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_send: qp expired, use_count=0"));
       log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor::destroy_callback(callback);
+      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_send(send_wr, bad_send_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
     // NOTE: in that case, cq will not have this event
-    executor::destroy_callback(callback);
+    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
@@ -492,7 +492,7 @@ auto queue_pair<ResumeStrategy>::make_asio_awaitable(
         auto self_ptr =
             std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
 
-        auto callback = executor::make_callback(
+        auto callback = executor_t::make_callback(
             [awaitable = awaitable_ptr,
              self = self_ptr](struct ibv_wc const &wc) mutable noexcept {
               awaitable->wc_ = wc;
@@ -547,7 +547,7 @@ auto queue_pair<ResumeStrategy>::make_asio_awaitable(
           });
         }
 
-        auto callback = executor::make_callback(
+        auto callback = executor_t::make_callback(
             [self = self_ptr, awaitable = awaitable_ptr,
              complete_called](struct ibv_wc const &wc) mutable noexcept {
               if (!complete_called->test_and_set(std::memory_order_relaxed)) {
@@ -706,7 +706,7 @@ bool queue_pair<ResumeStrategy>::recv_awaitable::await_ready() const noexcept {
 
 template <typename ResumeStrategy>
 bool queue_pair<ResumeStrategy>::recv_awaitable::suspend(
-    executor::callback_ptr callback) noexcept {
+    executor_t::callback_ptr callback) noexcept {
   ibv_sge recv_sge, *recv_sge_list{nullptr};
   int num_sge{0};
   if (local_mr_view_) {
@@ -728,14 +728,14 @@ bool queue_pair<ResumeStrategy>::recv_awaitable::suspend(
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_recv: qp expired, use_count=0"));
       log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor::destroy_callback(callback);
+      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
     log::debug("destroy callback on error: {}", fmt::ptr(callback));
-    executor::destroy_callback(callback);
+    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
@@ -745,7 +745,7 @@ template <typename ResumeStrategy>
 bool queue_pair<ResumeStrategy>::recv_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
   auto callback =
-      executor::make_callback([h, this](struct ibv_wc const &wc) noexcept {
+      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
         wc_ = wc;
         h.resume();
       });

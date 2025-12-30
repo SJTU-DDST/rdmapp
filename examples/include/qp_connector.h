@@ -27,7 +27,7 @@ class qp_connector : public noncopyable {
   std::string hostname_;
   uint16_t port_;
 
-  asio::awaitable<std::shared_ptr<rdmapp::queue_pair<>>>
+  asio::awaitable<std::shared_ptr<rdmapp::qp>>
   from_socket(asio::ip::tcp::socket socket);
 
 public:

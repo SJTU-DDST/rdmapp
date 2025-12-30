@@ -53,7 +53,8 @@ struct deserialized_qp {
  */
 struct AtPoller {};
 struct AtExecutor {};
-template <typename ResumeStrategy = AtExecutor>
+
+template <typename ResumeStrategy>
 class queue_pair
     : public noncopyable,
       public std::enable_shared_from_this<queue_pair<ResumeStrategy>> {
@@ -156,7 +157,7 @@ public:
 
     // NOTE: support asio::async_compose for asio::awaitable
     // how to use: https://github.com/chriskohlhoff/asio/issues/795
-    bool suspend(executor::callback_ptr callback) noexcept;
+    bool suspend(executor_t::callback_ptr callback) noexcept;
     send_result resume() const;
 
     bool await_ready() const noexcept;
@@ -187,7 +188,7 @@ public:
     recv_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr);
     recv_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer);
 
-    bool suspend(executor::callback_ptr fn) noexcept;
+    bool suspend(executor_t::callback_ptr fn) noexcept;
     recv_result resume() const;
 
     bool await_ready() const noexcept;
@@ -541,7 +542,7 @@ private:
                      struct ibv_recv_wr *&bad_recv_wr) const;
 };
 
-using qp = queue_pair<>;
+using qp = queue_pair<AtExecutor>;
 
 } // namespace rdmapp
 
