@@ -7,20 +7,25 @@ tasks:
   cmake:
     desc: cmake
     cmds:
-      - >
-        echo -e "cmake args:\n$(cat cmake/args)"
-      - >
-        cmake -GNinja "-B{{.BUILD}}"
-        $(cat cmake/args)
-        .
+      - cmake --preset debug
+      - cmake --preset release
   clean:
     desc: clean cmake build
     cmds:
       - rm -rf {{.BUILD}}
   build:
-    desc: build with cmake --build
+    desc: build with cmake debug preset
+    deps:
+      - build-debug
+      - build-release
+  build-debug:
+    desc: build with cmake debug preset
     cmds:
-      - cmake --build "{{.BUILD}}" --parallel $(nproc)
+      - cmake --build --preset build-debug
+  build-release:
+    desc: build with cmake release preset
+    cmds:
+      - cmake --build --preset build-release
   all:
     desc: cmake and build all targets
     deps:

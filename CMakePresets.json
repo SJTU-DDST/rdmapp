@@ -1,0 +1,65 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "description": "general: clang + ccache + lsp",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "RDMAPP_BUILD_EXAMPLES_PYBIND": "ON",
+        "RDMAPP_BUILD_DOCS": "OFF"
+      }
+    },
+    {
+      "name": "doc",
+      "inherits": "base",
+      "displayName": "Doc Mode",
+      "binaryDir": "${sourceDir}/build/doc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RDMAPP_BUILD_DOCS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base",
+      "displayName": "Debug Mode",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RDMAPP_BUILD_ASAN": "ON",
+        "RDMAPP_BUILD_DEBUG": "ON",
+        "RDMAPP_BUILD_LTO": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "Release Mode",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RDMAPP_BUILD_LTO": "ON",
+        "RDMAPP_BUILD_ASAN": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "build-release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "build-doc",
+      "configurePreset": "doc"
+    }
+  ]
+}
