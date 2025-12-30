@@ -1,6 +1,7 @@
 #include "rdmapp/cq_poller.h"
 
 #include <memory>
+#include <spdlog/fmt/std.h>
 #include <stdexcept>
 #include <stop_token>
 #include <thread>
@@ -19,7 +20,7 @@ cq_poller::cq_poller(std::shared_ptr<cq> cq, size_t batch_size)
 cq_poller::~cq_poller() {}
 
 void cq_poller::worker(std::stop_token token) {
-  log::debug("cq_poller: polling cqe");
+  log::debug("cq_poller[{}]: polling cqe", std::this_thread::get_id());
   while (!token.stop_requested()) {
     try {
       auto nr_wc = cq_->poll(wc_vec_);
@@ -34,7 +35,7 @@ void cq_poller::worker(std::stop_token token) {
       return;
     }
   }
-  log::debug("cq_poller: polling cqe exited");
+  log::debug("cq_poller[{}]: polling cqe exited", std::this_thread::get_id());
 }
 
 } // namespace rdmapp
