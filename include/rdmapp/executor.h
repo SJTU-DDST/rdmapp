@@ -1,9 +1,9 @@
 #pragma once
 
+#include <concepts>
 #include <functional>
 #include <memory>
 #include <span>
-#include <type_traits>
 #include <utility>
 
 #include <infiniband/verbs.h>
@@ -47,23 +47,20 @@ void execute_callback(struct ibv_wc const &wc) noexcept;
  */
 void destroy_callback(callback_ptr cb);
 
-} // namespace executor_t
-
 struct ThisThread {};
 struct WorkerThread {};
+
+} // namespace executor_t
+
 template <typename T>
-concept ExecutorTag =
-    std::is_same_v<T, ThisThread> || std::is_same_v<T, WorkerThread>;
-template <ExecutorTag Tag> class basic_executor;
-template <typename T>
-concept ExecutorType = std::is_same_v<T, basic_executor<ThisThread>> ||
-                       std::is_same_v<T, basic_executor<WorkerThread>>;
+concept ExecutionThread = std::same_as<T, executor_t::ThisThread> ||
+                          std::same_as<T, executor_t::WorkerThread>;
 
 namespace detail {
 struct executor_impl;
 };
 
-template <ExecutorTag Tag> class basic_executor {
+template <ExecutionThread Thread> class basic_executor {
   std::unique_ptr<detail::executor_impl> impl_;
 
 public:
@@ -71,10 +68,10 @@ public:
    * @brief Construct a new executor object
    */
   basic_executor(int nr_workers = 4)
-  requires std::same_as<Tag, WorkerThread>;
+  requires std::same_as<Thread, executor_t::WorkerThread>;
 
   basic_executor()
-  requires std::same_as<Tag, ThisThread>;
+  requires std::same_as<Thread, executor_t::ThisThread>;
 
   /**
    * @brief Process a completion entry.
@@ -92,6 +89,13 @@ public:
   ~basic_executor();
 };
 
-using executor = basic_executor<ThisThread>;
+template <typename T>
+concept executor_concept =
+    std::same_as<T, basic_executor<executor_t::ThisThread>> ||
+    std::same_as<T, basic_executor<executor_t::WorkerThread>>;
+
+using executor = basic_executor<executor_t::ThisThread>;
+
+static_assert(executor_concept<executor>);
 
 } // namespace rdmapp

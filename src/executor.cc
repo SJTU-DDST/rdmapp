@@ -67,22 +67,22 @@ struct executor_impl {
 
 } // namespace detail
 
-template <ExecutorTag Tag>
-basic_executor<Tag>::basic_executor()
-requires std::same_as<Tag, ThisThread>
+template <ExecutionThread Thread>
+basic_executor<Thread>::basic_executor()
+requires std::same_as<Thread, executor_t::ThisThread>
 {}
 
-template <ExecutorTag Tag>
-basic_executor<Tag>::basic_executor(int nr_workers)
-requires std::same_as<Tag, WorkerThread>
+template <ExecutionThread Thread>
+basic_executor<Thread>::basic_executor(int nr_workers)
+requires std::same_as<Thread, executor_t::WorkerThread>
     : impl_(std::make_unique<detail::executor_impl>(nr_workers)) {}
 
-template <ExecutorTag Tag>
-void basic_executor<Tag>::process_wc(
+template <ExecutionThread Thread>
+void basic_executor<Thread>::process_wc(
     std::span<struct ibv_wc> const wc) noexcept {
-  if constexpr (std::is_same_v<Tag, WorkerThread>) {
+  if constexpr (std::is_same_v<Thread, executor_t::WorkerThread>) {
     impl_->work_chan_.enqueue_bulk(wc.data(), wc.size());
-  } else if constexpr (std::is_same_v<Tag, ThisThread>) {
+  } else if constexpr (std::is_same_v<Thread, executor_t::ThisThread>) {
     for (auto const &w : wc) {
       executor_t::execute_callback(w);
     }
@@ -91,16 +91,16 @@ void basic_executor<Tag>::process_wc(
   }
 }
 
-template <ExecutorTag Tag> void basic_executor<Tag>::shutdown() {
+template <ExecutionThread Thread> void basic_executor<Thread>::shutdown() {
   if (impl_)
     impl_->shutdown();
 }
 
-template <ExecutorTag Tag> basic_executor<Tag>::~basic_executor() {
+template <ExecutionThread Thread> basic_executor<Thread>::~basic_executor() {
   shutdown();
 }
 
-template class basic_executor<ThisThread>;
-template class basic_executor<WorkerThread>;
+template class basic_executor<executor_t::ThisThread>;
+template class basic_executor<executor_t::WorkerThread>;
 
 } // namespace rdmapp

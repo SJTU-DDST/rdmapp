@@ -14,17 +14,17 @@
 
 namespace rdmapp {
 
-template <ExecutorType Executor>
+template <executor_concept Executor>
 basic_cq_poller<Executor>::basic_cq_poller(std::shared_ptr<cq> cq,
                                            std::unique_ptr<Executor> executor,
                                            size_t batch_size)
     : wc_vec_(batch_size), cq_(cq), executor_(std::move(executor)),
       poller_thread_(&basic_cq_poller::worker, this) {}
 
-template <ExecutorType Executor>
+template <executor_concept Executor>
 basic_cq_poller<Executor>::~basic_cq_poller() {}
 
-template <ExecutorType Executor>
+template <executor_concept Executor>
 void basic_cq_poller<Executor>::worker(std::stop_token token) {
   log::debug("cq_poller[thread={}]: polling cqe", std::this_thread::get_id());
   while (!token.stop_requested()) {
@@ -44,7 +44,7 @@ void basic_cq_poller<Executor>::worker(std::stop_token token) {
              std::this_thread::get_id());
 }
 
-template class basic_cq_poller<basic_executor<ThisThread>>;
-template class basic_cq_poller<basic_executor<WorkerThread>>;
+template class basic_cq_poller<basic_executor<executor_t::ThisThread>>;
+template class basic_cq_poller<basic_executor<executor_t::WorkerThread>>;
 
 } // namespace rdmapp

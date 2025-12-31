@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <memory>
 #include <thread>
 
@@ -15,7 +16,7 @@ namespace rdmapp {
  *
  */
 
-template <ExecutorType Executor> class basic_cq_poller {
+template <executor_concept Executor> class basic_cq_poller {
   std::vector<struct ibv_wc> wc_vec_;
   std::shared_ptr<cq> cq_;
   std::unique_ptr<Executor> executor_;
@@ -39,5 +40,12 @@ public:
 };
 
 using cq_poller = basic_cq_poller<executor>;
+
+template <typename T>
+concept cq_poller_concept =
+    std::same_as<T, basic_cq_poller<basic_executor<executor_t::ThisThread>>> ||
+    std::same_as<T, basic_cq_poller<basic_executor<executor_t::WorkerThread>>>;
+
+static_assert(cq_poller_concept<cq_poller>);
 
 } // namespace rdmapp
