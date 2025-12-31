@@ -17,7 +17,11 @@
 #include <rdmapp/rdmapp.h>
 
 constexpr std::size_t kMessageSize = 4096;
+#ifdef RDMAPP_BUILD_DEBUG
+constexpr int kSendCount = 100;
+#else
 constexpr int kSendCount = 1000'000;
+#endif
 
 asio::awaitable<void> handler(std::shared_ptr<rdmapp::qp> qp) {
   std::array<std::byte, kMessageSize> buffer;
@@ -99,7 +103,11 @@ asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef RDMAPP_BUILD_DEBUG
   rdmapp::log::setup(rdmapp::log::level::debug);
+#else
+  rdmapp::log::setup(rdmapp::log::level::info);
+#endif
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
@@ -117,16 +125,19 @@ int main(int argc, char *argv[]) {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
     asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
-    io_ctx->run();
+    while (!io_ctx->stopped()) {
+      io_ctx->poll();
+    }
     break;
   }
 
   case 3: {
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
-    auto fut = asio::co_spawn(*io_ctx, client(connector), asio::use_future);
-    io_ctx->run();
-    fut.get();
+    asio::co_spawn(*io_ctx, client(connector), asio::detached);
+    while (!io_ctx->stopped()) {
+      io_ctx->poll();
+    }
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;
   }

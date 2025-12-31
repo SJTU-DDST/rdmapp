@@ -161,9 +161,11 @@ message(STATUS "[rdmapp/compile] options: ${RDMAPP_COMPILE_OPTIONS}")
 message(STATUS "[rdmapp/link] options: ${RDMAPP_LINK_OPTIONS}")
 
 target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
-target_link_libraries(rdmapp PUBLIC ibverbs Threads::Threads PRIVATE spdlog::spdlog_header_only)
+target_link_libraries(rdmapp
+  PUBLIC ibverbs Threads::Threads asio
+  PRIVATE spdlog::spdlog_header_only concurrentqueue
+)
 target_include_directories(rdmapp PUBLIC include)
-target_link_libraries(rdmapp PUBLIC asio)
 
 find_program(iwyu_path NAMES include-what-you-use iwyu)
 

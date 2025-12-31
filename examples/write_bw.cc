@@ -3,11 +3,12 @@
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/io_context.hpp>
 #include <asio/signal_set.hpp>
-#include <asio/thread_pool.hpp>
 #include <cassert>
 #include <memory>
 #include <span>
+#include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
 #include <stop_token>
 #include <string>
@@ -17,10 +18,56 @@
 
 using namespace std::literals::chrono_literals;
 
-constexpr size_t kBufferSizeBytes = 2 * 1024 * 1024;
+constexpr size_t kBufferSizeBytes = 1024 * 1024;
 constexpr size_t kSendCount = 1024 * 1024 * 1024;
-constexpr size_t kQP = 3;
+constexpr size_t kQP = 4;
 std::array<std::atomic<size_t>, kQP> gSendCounts;
+
+struct io_ctx_pool {
+  io_ctx_pool(int nr_worker = 1) {
+    for (int i = 0; i < nr_worker; i++)
+      io_ctx_.emplace_back(std::make_unique<asio::io_context>(1));
+  }
+
+  ~io_ctx_pool() { stop(); }
+
+  auto run() {
+    for (auto io_ctx : io_ctx_) {
+      workers_.emplace_back([io_ctx]() {
+        spdlog::info("io_context polling on thread: {}",
+                     std::this_thread::get_id());
+        auto guard = asio::make_work_guard(*io_ctx);
+        while (!io_ctx->stopped()) {
+          io_ctx->poll();
+        }
+      });
+    }
+  }
+
+  auto wait() {
+    for (auto &t : workers_) {
+      if (t.joinable())
+        t.join();
+    }
+  }
+
+  auto stop() -> void {
+    spdlog::info("io_context_pool stopping");
+    for (auto &io_ctx : io_ctx_) {
+      if (!io_ctx->stopped())
+        io_ctx->stop();
+    }
+  }
+
+  auto get_shared() { return io_ctx_[++selector_ % io_ctx_.size()]; }
+
+  auto &get() { return *get_shared(); }
+
+private:
+  std::atomic<int> selector_{0};
+  std::vector<std::shared_ptr<asio::io_context>> io_ctx_;
+  std::vector<std::jthread> workers_; // workers should release first
+};
 
 asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp, int id) {
   std::vector<std::byte> buffer;
@@ -62,20 +109,20 @@ asio::awaitable<void> handler(std::shared_ptr<rdmapp::qp> qp) {
   co_return;
 }
 
-asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
-  auto executor = co_await asio::this_coro::executor;
+asio::awaitable<void> server(io_ctx_pool &pool,
+                             std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   for (size_t i = 0; i < kQP; i++) {
     auto qp = co_await acceptor->accept();
-    asio::co_spawn(executor, handler(std::move(qp)), asio::detached);
+    asio::co_spawn(pool.get(), handler(std::move(qp)), asio::detached);
   }
   co_return;
 }
 
-asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
-  auto executor = co_await asio::this_coro::executor;
+asio::awaitable<void> client(io_ctx_pool &pool,
+                             std::shared_ptr<rdmapp::qp_connector> connector) {
   for (size_t i = 0; i < kQP; i++) {
     auto qp = co_await connector->connect();
-    asio::co_spawn(executor, client_worker(std::move(qp), i), asio::detached);
+    asio::co_spawn(pool.get(), client_worker(std::move(qp), i), asio::detached);
   }
   co_return;
 }
@@ -91,8 +138,8 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
-  auto io_ctx = std::make_shared<asio::io_context>(4);
-  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
+  rdmapp::cq_poller cq_poller{cq};
+  io_ctx_pool context_pool(kQP);
 
   auto reporter_fn = [&](std::stop_token token) {
     while (!token.stop_requested()) {
@@ -110,37 +157,32 @@ int main(int argc, char *argv[]) {
     }
   };
 
-  asio::thread_pool pool(4);
-  asio::signal_set signals(*io_ctx, SIGINT, SIGTERM);
-  signals.async_wait([io_ctx, &pool](auto, auto) {
-    io_ctx->stop();
-    pool.stop();
+  auto &signal_context = context_pool.get();
+  asio::signal_set signals(signal_context, SIGINT, SIGTERM);
+  signals.async_wait([&context_pool](auto, auto) {
+    context_pool.stop();
     spdlog::info("gracefully shutdown");
   });
 
   if (argc == 2) {
-    auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
-    asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
-    std::vector<std::jthread> workers_;
-    for (size_t i = 0; i < kQP; i++) {
-      workers_.emplace_back([io_ctx, i]() {
-        io_ctx->run();
-        spdlog::info("worker[{}] exited", i);
-      });
-    }
+    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(
+        context_pool.get_shared(), port, pd, cq);
+    asio::co_spawn(context_pool.get(), server(context_pool, acceptor),
+                   asio::detached);
+    context_pool.run();
+    context_pool.wait();
     return 0;
   }
 
   if (argc == 3) {
-    std::jthread _([io_ctx]() { io_ctx->run(); }); // handle SIGINT/SIGTERM
     auto connector = std::make_shared<rdmapp::qp_connector>(
         argv[1], std::stoi(argv[2]), pd, cq);
-    // NOTE: thread pool perform actually better
-    asio::co_spawn(pool, client(connector), asio::detached);
+    asio::co_spawn(context_pool.get(), client(context_pool, connector),
+                   asio::detached);
     auto reporter = std::jthread(reporter_fn);
-    pool.join();
+    context_pool.run();
+    context_pool.wait();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
   }
   return 0;

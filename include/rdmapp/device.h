@@ -62,7 +62,7 @@ class device : public noncopyable {
   uint16_t port_num_;
   friend class pd;
   friend class cq;
-  friend class qp;
+  template <typename ResumeStrategy> friend class basic_qp;
   friend class srq;
   void open_device(struct ibv_device *target, uint16_t port_num);
   std::unique_ptr<device_list> device_list_;

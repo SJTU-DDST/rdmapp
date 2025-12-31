@@ -10,9 +10,6 @@
 #include "rdmapp/detail/noncopyable.h"
 
 namespace rdmapp {
-
-class qp;
-
 /**
  * @brief This class is an abstraction of a Protection Domain.
  *
@@ -20,7 +17,7 @@ class qp;
 class pd : public noncopyable, public std::enable_shared_from_this<pd> {
   std::shared_ptr<device> device_;
   struct ibv_pd *pd_;
-  friend class qp;
+  template <typename ResumeStrategy> friend class basic_qp;
   friend class srq;
 
 public:
