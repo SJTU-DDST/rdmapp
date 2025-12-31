@@ -90,10 +90,16 @@ asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   }
 }
 
+// NOTE: for server use basic_qp<AtPoller> will perform better in latency
+// we can use io_context driven client + poller with consumer driven server
+// for lower transport latency; by default, this example use io_context driven
+// for both server and client
 asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
   auto executor = co_await asio::this_coro::executor;
-  auto qp = co_await acceptor->accept();
-  asio::co_spawn(executor, handler(std::move(qp)), asio::detached);
+  while (true) {
+    auto qp = co_await acceptor->accept();
+    asio::co_spawn(executor, handler(std::move(qp)), asio::detached);
+  }
 }
 
 asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
