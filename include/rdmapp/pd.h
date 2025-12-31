@@ -17,7 +17,7 @@ namespace rdmapp {
 class pd : public noncopyable, public std::enable_shared_from_this<pd> {
   std::shared_ptr<device> device_;
   struct ibv_pd *pd_;
-  template <typename ResumeStrategy> friend class queue_pair;
+  template <typename ResumeStrategy> friend class basic_qp;
   friend class srq;
 
 public:

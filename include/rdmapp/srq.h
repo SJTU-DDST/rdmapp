@@ -15,7 +15,7 @@ namespace rdmapp {
 class srq {
   struct ibv_srq *srq_;
   std::shared_ptr<pd> pd_;
-  template <typename ResumeStrategy> friend class queue_pair;
+  template <typename ResumeStrategy> friend class basic_qp;
 
 public:
   /**

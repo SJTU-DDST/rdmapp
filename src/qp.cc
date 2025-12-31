@@ -40,59 +40,59 @@ static std::span<std::byte> remove_const(std::span<std::byte const> buffer) {
 }
 
 template <typename ResumeStrategy>
-std::atomic<uint32_t> queue_pair<ResumeStrategy>::next_sq_psn = 1;
+std::atomic<uint32_t> basic_qp<ResumeStrategy>::next_sq_psn = 1;
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::queue_pair(uint16_t remote_lid, uint32_t remote_qpn,
-                                       uint32_t remote_psn,
-                                       union ibv_gid remote_gid,
-                                       std::shared_ptr<pd> pd,
-                                       std::shared_ptr<cq> cq,
-                                       std::shared_ptr<srq> srq)
-    : queue_pair(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq,
-                 srq) {}
+basic_qp<ResumeStrategy>::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
+                                   uint32_t remote_psn,
+                                   union ibv_gid remote_gid,
+                                   std::shared_ptr<pd> pd,
+                                   std::shared_ptr<cq> cq,
+                                   std::shared_ptr<srq> srq)
+    : basic_qp(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq,
+               srq) {}
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::queue_pair(uint16_t remote_lid, uint32_t remote_qpn,
-                                       uint32_t remote_psn,
-                                       union ibv_gid remote_gid,
-                                       std::shared_ptr<pd> pd,
-                                       std::shared_ptr<cq> recv_cq,
-                                       std::shared_ptr<cq> send_cq,
-                                       std::shared_ptr<srq> srq)
-    : queue_pair(pd, recv_cq, send_cq, srq) {
+basic_qp<ResumeStrategy>::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
+                                   uint32_t remote_psn,
+                                   union ibv_gid remote_gid,
+                                   std::shared_ptr<pd> pd,
+                                   std::shared_ptr<cq> recv_cq,
+                                   std::shared_ptr<cq> send_cq,
+                                   std::shared_ptr<srq> srq)
+    : basic_qp(pd, recv_cq, send_cq, srq) {
   rtr(remote_lid, remote_qpn, remote_psn, remote_gid);
   rts();
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::queue_pair(std::shared_ptr<rdmapp::pd> pd,
-                                       std::shared_ptr<cq> cq,
-                                       std::shared_ptr<srq> srq)
-    : queue_pair(pd, cq, cq, srq) {}
+basic_qp<ResumeStrategy>::basic_qp(std::shared_ptr<rdmapp::pd> pd,
+                                   std::shared_ptr<cq> cq,
+                                   std::shared_ptr<srq> srq)
+    : basic_qp(pd, cq, cq, srq) {}
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::queue_pair(std::shared_ptr<rdmapp::pd> pd,
-                                       std::shared_ptr<cq> recv_cq,
-                                       std::shared_ptr<cq> send_cq,
-                                       std::shared_ptr<srq> srq)
+basic_qp<ResumeStrategy>::basic_qp(std::shared_ptr<rdmapp::pd> pd,
+                                   std::shared_ptr<cq> recv_cq,
+                                   std::shared_ptr<cq> send_cq,
+                                   std::shared_ptr<srq> srq)
     : qp_(nullptr), pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq) {
   create();
   init();
 }
 
 template <typename ResumeStrategy>
-std::vector<std::byte> &queue_pair<ResumeStrategy>::user_data() {
+std::vector<std::byte> &basic_qp<ResumeStrategy>::user_data() {
   return user_data_;
 }
 
 template <typename ResumeStrategy>
-std::shared_ptr<pd> queue_pair<ResumeStrategy>::pd_ptr() const {
+std::shared_ptr<pd> basic_qp<ResumeStrategy>::pd_ptr() const {
   return pd_;
 }
 
 template <typename ResumeStrategy>
-std::vector<std::byte> queue_pair<ResumeStrategy>::serialize() const {
+std::vector<std::byte> basic_qp<ResumeStrategy>::serialize() const {
   std::vector<std::byte> buffer;
   auto it = std::back_inserter(buffer);
   detail::serialize(pd_->device_ptr()->lid(), it);
@@ -104,7 +104,7 @@ std::vector<std::byte> queue_pair<ResumeStrategy>::serialize() const {
   return buffer;
 }
 
-template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::create() {
+template <typename ResumeStrategy> void basic_qp<ResumeStrategy>::create() {
   struct ibv_qp_init_attr qp_init_attr = {};
   ::bzero(&qp_init_attr, sizeof(qp_init_attr));
   qp_init_attr.qp_type = IBV_QPT_RC;
@@ -120,9 +120,9 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::create() {
   if (srq_ != nullptr) {
     qp_init_attr.srq = srq_->srq_;
     raw_srq_ = srq_->srq_;
-    post_recv_fn = &queue_pair<ResumeStrategy>::post_recv_srq;
+    post_recv_fn = &basic_qp<ResumeStrategy>::post_recv_srq;
   } else {
-    post_recv_fn = &queue_pair<ResumeStrategy>::post_recv_rq;
+    post_recv_fn = &basic_qp<ResumeStrategy>::post_recv_rq;
   }
 
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
@@ -132,7 +132,7 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::create() {
              pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
-template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::init() {
+template <typename ResumeStrategy> void basic_qp<ResumeStrategy>::init() {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_INIT;
@@ -154,9 +154,9 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::init() {
 }
 
 template <typename ResumeStrategy>
-void queue_pair<ResumeStrategy>::rtr(uint16_t remote_lid, uint32_t remote_qpn,
-                                     uint32_t remote_psn,
-                                     union ibv_gid remote_gid) {
+void basic_qp<ResumeStrategy>::rtr(uint16_t remote_lid, uint32_t remote_qpn,
+                                   uint32_t remote_psn,
+                                   union ibv_gid remote_gid) {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_RTR;
@@ -189,7 +189,7 @@ void queue_pair<ResumeStrategy>::rtr(uint16_t remote_lid, uint32_t remote_qpn,
   }
 }
 
-template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::rts() {
+template <typename ResumeStrategy> void basic_qp<ResumeStrategy>::rts() {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_RTS;
@@ -214,8 +214,8 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::rts() {
 }
 
 template <typename ResumeStrategy>
-void queue_pair<ResumeStrategy>::post_send(struct ibv_send_wr const &send_wr,
-                                           struct ibv_send_wr *&bad_send_wr) {
+void basic_qp<ResumeStrategy>::post_send(struct ibv_send_wr const &send_wr,
+                                         struct ibv_send_wr *&bad_send_wr) {
   log::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
              send_wr.sg_list->addr);
   check_rc(::ibv_post_send(qp_, const_cast<struct ibv_send_wr *>(&send_wr),
@@ -224,13 +224,13 @@ void queue_pair<ResumeStrategy>::post_send(struct ibv_send_wr const &send_wr,
 }
 
 template <typename ResumeStrategy>
-void queue_pair<ResumeStrategy>::post_recv(
+void basic_qp<ResumeStrategy>::post_recv(
     struct ibv_recv_wr const &recv_wr, struct ibv_recv_wr *&bad_recv_wr) const {
   (this->*(post_recv_fn))(recv_wr, bad_recv_wr);
 }
 
 template <typename ResumeStrategy>
-void queue_pair<ResumeStrategy>::post_recv_rq(
+void basic_qp<ResumeStrategy>::post_recv_rq(
     struct ibv_recv_wr const &recv_wr, struct ibv_recv_wr *&bad_recv_wr) const {
   log::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
              fmt::ptr(recv_wr.sg_list),
@@ -241,7 +241,7 @@ void queue_pair<ResumeStrategy>::post_recv_rq(
 }
 
 template <typename ResumeStrategy>
-void queue_pair<ResumeStrategy>::post_recv_srq(
+void basic_qp<ResumeStrategy>::post_recv_srq(
     struct ibv_recv_wr const &recv_wr, struct ibv_recv_wr *&bad_recv_wr) const {
   check_rc(::ibv_post_srq_recv(raw_srq_,
                                const_cast<struct ibv_recv_wr *>(&recv_wr),
@@ -250,38 +250,38 @@ void queue_pair<ResumeStrategy>::post_recv_srq(
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
     enum ibv_wr_opcode opcode)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(), wc_(), opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
     enum ibv_wr_opcode opcode, mr_view remote_mr)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
     enum ibv_wr_opcode opcode, mr_view remote_mr, uint32_t imm)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), imm_(imm),
       opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
     enum ibv_wr_opcode opcode, mr_view remote_mr, uint64_t add)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), compare_add_(add),
       opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
     enum ibv_wr_opcode opcode, mr_view remote_mr, uint64_t compare,
     uint64_t swap)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
@@ -290,31 +290,31 @@ queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
       compare_add_(compare), swap_(swap), opcode_(opcode) {}
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr, enum ibv_wr_opcode opcode)
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr, enum ibv_wr_opcode opcode)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(), wc_(),
       opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
     mr_view remote_mr)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
       opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
     mr_view remote_mr, uint32_t imm)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr), imm_(imm),
       opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
     mr_view remote_mr, uint64_t add)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
       compare_add_(add), opcode_(opcode) {}
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_awaitable::send_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
+basic_qp<ResumeStrategy>::send_awaitable::send_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr, enum ibv_wr_opcode opcode,
     mr_view remote_mr,
 
     uint64_t compare, uint64_t swap)
@@ -330,11 +330,11 @@ static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
 }
 
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::send_awaitable::await_ready() const noexcept {
+bool basic_qp<ResumeStrategy>::send_awaitable::await_ready() const noexcept {
   return false;
 }
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::send_awaitable::await_suspend(
+bool basic_qp<ResumeStrategy>::send_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
   auto callback =
       executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
@@ -345,7 +345,7 @@ bool queue_pair<ResumeStrategy>::send_awaitable::await_suspend(
 }
 
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::send_awaitable::suspend(
+bool basic_qp<ResumeStrategy>::send_awaitable::suspend(
     executor_t::callback_ptr callback) noexcept {
   auto send_sge = fill_local_sge(local_mr_view_);
 
@@ -379,7 +379,7 @@ bool queue_pair<ResumeStrategy>::send_awaitable::suspend(
   }
 
   try {
-    std::shared_ptr<queue_pair> qp = qp_.lock();
+    std::shared_ptr<basic_qp> qp = qp_.lock();
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_send: qp expired, use_count=0"));
@@ -398,20 +398,20 @@ bool queue_pair<ResumeStrategy>::send_awaitable::suspend(
 }
 
 template <typename ResumeStrategy>
-constexpr bool queue_pair<ResumeStrategy>::send_awaitable::is_rdma() const {
+constexpr bool basic_qp<ResumeStrategy>::send_awaitable::is_rdma() const {
   return opcode_ == IBV_WR_RDMA_READ || opcode_ == IBV_WR_RDMA_WRITE ||
          opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM;
 }
 
 template <typename ResumeStrategy>
-constexpr bool queue_pair<ResumeStrategy>::send_awaitable::is_atomic() const {
+constexpr bool basic_qp<ResumeStrategy>::send_awaitable::is_atomic() const {
   return opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP ||
          opcode_ == IBV_WR_ATOMIC_FETCH_AND_ADD;
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::send_result
-queue_pair<ResumeStrategy>::send_awaitable::resume() const {
+basic_qp<ResumeStrategy>::send_result
+basic_qp<ResumeStrategy>::send_awaitable::resume() const {
   check_wc_status(wc_.status, "failed to send");
   /* ref: https://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
    * byte_len: The number of bytes transferred. Relevant if the Receive Queue
@@ -424,7 +424,7 @@ queue_pair<ResumeStrategy>::send_awaitable::resume() const {
 }
 
 template <typename ResumeStrategy>
-uint32_t queue_pair<ResumeStrategy>::send_awaitable::await_resume() const {
+uint32_t basic_qp<ResumeStrategy>::send_awaitable::await_resume() const {
   if (exception_) [[unlikely]] {
     std::rethrow_exception(exception_);
   }
@@ -481,7 +481,7 @@ static auto complete(auto &&self, auto &&awaitable) noexcept {
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::make_asio_awaitable(
+auto basic_qp<ResumeStrategy>::make_asio_awaitable(
     std::unique_ptr<send_awaitable> awaitable) -> asio::awaitable<send_result> {
   std::shared_ptr<send_awaitable> awaitable_ptr =
       std::shared_ptr<send_awaitable>(std::move(awaitable));
@@ -507,7 +507,7 @@ auto queue_pair<ResumeStrategy>::make_asio_awaitable(
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::make_asio_awaitable(
+auto basic_qp<ResumeStrategy>::make_asio_awaitable(
     std::unique_ptr<recv_awaitable> awaitable) -> asio::awaitable<recv_result> {
   auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
   return asio::async_compose<decltype(asio::use_awaitable),
@@ -567,7 +567,7 @@ auto queue_pair<ResumeStrategy>::make_asio_awaitable(
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::send(std::span<std::byte const> buffer)
+auto basic_qp<ResumeStrategy>::send(std::span<std::byte const> buffer)
     -> asio::awaitable<send_result> {
   auto awaitable = std::make_unique<send_awaitable>(
       this->shared_from_this(), remove_const(buffer), IBV_WR_SEND);
@@ -575,8 +575,8 @@ auto queue_pair<ResumeStrategy>::send(std::span<std::byte const> buffer)
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::write(mr_view remote_mr,
-                                       std::span<std::byte const> const buffer)
+auto basic_qp<ResumeStrategy>::write(mr_view remote_mr,
+                                     std::span<std::byte const> const buffer)
     -> asio::awaitable<send_result> {
   auto awaitable = std::make_unique<send_awaitable>(
       this->shared_from_this(), remove_const(buffer), IBV_WR_RDMA_WRITE,
@@ -585,127 +585,126 @@ auto queue_pair<ResumeStrategy>::write(mr_view remote_mr,
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::write_with_imm(
-    mr_view remote_mr, std::span<std::byte const> buffer, uint32_t imm)
+auto basic_qp<ResumeStrategy>::write_with_imm(mr_view remote_mr,
+                                              std::span<std::byte const> buffer,
+                                              uint32_t imm)
     -> asio::awaitable<send_result> {
 
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->shared_from_this(), remove_const(buffer),
       IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::read(mr_view remote_mr,
-                                      std::span<std::byte> buffer)
+auto basic_qp<ResumeStrategy>::read(mr_view remote_mr,
+                                    std::span<std::byte> buffer)
     -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->shared_from_this(), buffer, IBV_WR_RDMA_READ, remote_mr);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::fetch_and_add(mr_view remote_mr,
-                                               std::span<std::byte> buffer,
-                                               uint64_t add)
+auto basic_qp<ResumeStrategy>::fetch_and_add(mr_view remote_mr,
+                                             std::span<std::byte> buffer,
+                                             uint64_t add)
     -> asio::awaitable<send_result> {
   assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->shared_from_this(), buffer, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
       add);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::compare_and_swap(mr_view remote_mr,
-                                                  std::span<std::byte> buffer,
-                                                  uint64_t compare,
-                                                  uint64_t swap)
+auto basic_qp<ResumeStrategy>::compare_and_swap(mr_view remote_mr,
+                                                std::span<std::byte> buffer,
+                                                uint64_t compare, uint64_t swap)
     -> asio::awaitable<send_result> {
   assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->shared_from_this(), buffer, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
       compare, swap);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::send(mr_view local_mr)
+auto basic_qp<ResumeStrategy>::send(mr_view local_mr)
     -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_SEND);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::write(mr_view remote_mr, mr_view local_mr)
+auto basic_qp<ResumeStrategy>::write(mr_view remote_mr, mr_view local_mr)
     -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE, remote_mr);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::write_with_imm(mr_view remote_mr,
-                                                mr_view local_mr, uint32_t imm)
+auto basic_qp<ResumeStrategy>::write_with_imm(mr_view remote_mr,
+                                              mr_view local_mr, uint32_t imm)
     -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr,
       imm);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::read(mr_view remote_mr, mr_view local_mr)
+auto basic_qp<ResumeStrategy>::read(mr_view remote_mr, mr_view local_mr)
     -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_RDMA_READ, remote_mr);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::fetch_and_add(mr_view remote_mr,
-                                               mr_view local_mr, uint64_t add)
+auto basic_qp<ResumeStrategy>::fetch_and_add(mr_view remote_mr,
+                                             mr_view local_mr, uint64_t add)
     -> asio::awaitable<send_result> {
   assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
       add);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::compare_and_swap(mr_view remote_mr,
-                                                  mr_view local_mr,
-                                                  uint64_t compare,
-                                                  uint64_t swap)
+auto basic_qp<ResumeStrategy>::compare_and_swap(mr_view remote_mr,
+                                                mr_view local_mr,
+                                                uint64_t compare, uint64_t swap)
     -> asio::awaitable<send_result> {
   assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<queue_pair<ResumeStrategy>::send_awaitable>(
+  auto awaitable = std::make_unique<basic_qp<ResumeStrategy>::send_awaitable>(
       this->weak_from_this(), local_mr, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
       compare, swap);
   return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::recv_awaitable::recv_awaitable(
-    std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer)
+basic_qp<ResumeStrategy>::recv_awaitable::recv_awaitable(
+    std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size()))),
       local_mr_view_(*local_mr_), wc_() {}
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::recv_awaitable::recv_awaitable(
-    std::weak_ptr<queue_pair> qp, mr_view local_mr)
+basic_qp<ResumeStrategy>::recv_awaitable::recv_awaitable(
+    std::weak_ptr<basic_qp> qp, mr_view local_mr)
     : qp_(qp), local_mr_view_(local_mr), wc_() {}
 
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::recv_awaitable::await_ready() const noexcept {
+bool basic_qp<ResumeStrategy>::recv_awaitable::await_ready() const noexcept {
   return false;
 }
 
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::recv_awaitable::suspend(
+bool basic_qp<ResumeStrategy>::recv_awaitable::suspend(
     executor_t::callback_ptr callback) noexcept {
   ibv_sge recv_sge, *recv_sge_list{nullptr};
   int num_sge{0};
@@ -723,7 +722,7 @@ bool queue_pair<ResumeStrategy>::recv_awaitable::suspend(
   recv_wr.sg_list = recv_sge_list;
 
   try {
-    std::shared_ptr<queue_pair> qp = qp_.lock();
+    std::shared_ptr<basic_qp> qp = qp_.lock();
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_recv: qp expired, use_count=0"));
@@ -742,7 +741,7 @@ bool queue_pair<ResumeStrategy>::recv_awaitable::suspend(
 }
 
 template <typename ResumeStrategy>
-bool queue_pair<ResumeStrategy>::recv_awaitable::await_suspend(
+bool basic_qp<ResumeStrategy>::recv_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
   auto callback =
       executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
@@ -753,8 +752,8 @@ bool queue_pair<ResumeStrategy>::recv_awaitable::await_suspend(
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::recv_result
-queue_pair<ResumeStrategy>::recv_awaitable::resume() const {
+basic_qp<ResumeStrategy>::recv_result
+basic_qp<ResumeStrategy>::recv_awaitable::resume() const {
   check_wc_status(wc_.status, "failed to recv");
   if (wc_.wc_flags & IBV_WC_WITH_IMM) {
     log::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id, wc_.imm_data);
@@ -764,8 +763,8 @@ queue_pair<ResumeStrategy>::recv_awaitable::resume() const {
 }
 
 template <typename ResumeStrategy>
-queue_pair<ResumeStrategy>::recv_result
-queue_pair<ResumeStrategy>::recv_awaitable::await_resume() const {
+basic_qp<ResumeStrategy>::recv_result
+basic_qp<ResumeStrategy>::recv_awaitable::await_resume() const {
   if (exception_) [[unlikely]] {
     std::rethrow_exception(exception_);
   }
@@ -773,22 +772,22 @@ queue_pair<ResumeStrategy>::recv_awaitable::await_resume() const {
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::recv(std::span<std::byte> buffer)
+auto basic_qp<ResumeStrategy>::recv(std::span<std::byte> buffer)
     -> asio::awaitable<recv_result> {
   return make_asio_awaitable(
-      std::make_unique<queue_pair<ResumeStrategy>::recv_awaitable>(
+      std::make_unique<basic_qp<ResumeStrategy>::recv_awaitable>(
           this->shared_from_this(), buffer));
 }
 
 template <typename ResumeStrategy>
-auto queue_pair<ResumeStrategy>::recv(mr_view local_mr)
+auto basic_qp<ResumeStrategy>::recv(mr_view local_mr)
     -> asio::awaitable<recv_result> {
   return make_asio_awaitable(
-      std::make_unique<queue_pair<ResumeStrategy>::recv_awaitable>(
+      std::make_unique<basic_qp<ResumeStrategy>::recv_awaitable>(
           this->weak_from_this(), local_mr));
 }
 
-template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::destroy() {
+template <typename ResumeStrategy> void basic_qp<ResumeStrategy>::destroy() {
   if (qp_ == nullptr) [[unlikely]] {
     return;
   }
@@ -800,7 +799,7 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::destroy() {
   }
 }
 
-template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::err() {
+template <typename ResumeStrategy> void basic_qp<ResumeStrategy>::err() {
   struct ibv_qp_attr attr{};
   attr.qp_state = IBV_QPS_ERR;
 
@@ -814,20 +813,20 @@ template <typename ResumeStrategy> void queue_pair<ResumeStrategy>::err() {
 
 template <typename ResumeStrategy>
 std::exception_ptr
-queue_pair<ResumeStrategy>::recv_awaitable::unhandled_exception() const {
+basic_qp<ResumeStrategy>::recv_awaitable::unhandled_exception() const {
   return exception_;
 }
 
 template <typename ResumeStrategy>
 std::exception_ptr
-queue_pair<ResumeStrategy>::send_awaitable::unhandled_exception() const {
+basic_qp<ResumeStrategy>::send_awaitable::unhandled_exception() const {
   return exception_;
 }
 
-template <typename ResumeStrategy> queue_pair<ResumeStrategy>::~queue_pair() {
+template <typename ResumeStrategy> basic_qp<ResumeStrategy>::~basic_qp() {
   destroy();
 }
 
-template class queue_pair<AtPoller>;
-template class queue_pair<AtExecutor>;
+template class basic_qp<AtPoller>;
+template class basic_qp<AtExecutor>;
 } // namespace rdmapp

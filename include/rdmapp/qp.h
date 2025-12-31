@@ -55,17 +55,16 @@ struct AtPoller {};
 struct AtExecutor {};
 
 template <typename ResumeStrategy>
-class queue_pair
-    : public noncopyable,
-      public std::enable_shared_from_this<queue_pair<ResumeStrategy>> {
+class basic_qp : public noncopyable,
+                 public std::enable_shared_from_this<basic_qp<ResumeStrategy>> {
   static_assert(std::is_same_v<ResumeStrategy, AtPoller> ||
                 std::is_same_v<ResumeStrategy, AtExecutor>);
   static std::atomic<uint32_t> next_sq_psn;
   struct ibv_qp *qp_;
   struct ibv_srq *raw_srq_;
   uint32_t sq_psn_;
-  void (queue_pair::*post_recv_fn)(struct ibv_recv_wr const &recv_wr,
-                                   struct ibv_recv_wr *&bad_recv_wr) const;
+  void (basic_qp::*post_recv_fn)(struct ibv_recv_wr const &recv_wr,
+                                 struct ibv_recv_wr *&bad_recv_wr) const;
 
   std::shared_ptr<pd> pd_;
   std::shared_ptr<cq> recv_cq_;
@@ -94,8 +93,8 @@ public:
 
   class [[nodiscard]] send_awaitable
       : public std::enable_shared_from_this<send_awaitable> {
-    friend class queue_pair;
-    std::weak_ptr<queue_pair> qp_;
+    friend basic_qp;
+    std::weak_ptr<basic_qp> qp_;
     std::unique_ptr<local_mr> local_mr_ [[maybe_unused]];
     mr_view local_mr_view_;
     mr_view remote_mr_view_;
@@ -127,31 +126,31 @@ public:
     const enum ibv_wr_opcode opcode_;
 
   public:
-    send_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode);
-    send_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr);
-    send_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr, uint32_t imm);
-    send_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr, uint64_t add);
-    send_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr,
+    send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t compare, uint64_t swap);
 
-    send_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+    send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode); // send
-    send_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+    send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode,
                    mr_view remote_mr); // write
-    send_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+    send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint32_t imm); // write with imm
 
-    send_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+    send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t add); // fetch and add
-    send_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer,
+    send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t compare, uint64_t swap); // cas
 
@@ -174,8 +173,8 @@ public:
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
   class [[nodiscard]] recv_awaitable {
-    friend class queue_pair;
-    std::weak_ptr<queue_pair> qp_;
+    friend basic_qp;
+    std::weak_ptr<basic_qp> qp_;
     std::unique_ptr<local_mr> local_mr_;
     mr_view local_mr_view_;
     std::exception_ptr exception_;
@@ -185,8 +184,8 @@ public:
   public:
     recv_awaitable(recv_awaitable &&) = default;
     recv_awaitable(recv_awaitable const &) = delete;
-    recv_awaitable(std::weak_ptr<queue_pair> qp, mr_view local_mr);
-    recv_awaitable(std::shared_ptr<queue_pair> qp, std::span<std::byte> buffer);
+    recv_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr);
+    recv_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer);
 
     bool suspend(executor_t::callback_ptr fn) noexcept;
     recv_result resume() const;
@@ -213,10 +212,10 @@ public:
    * @param srq (Optional) If set, all recv work requests will be posted to this
    * SRQ.
    */
-  queue_pair(const uint16_t remote_lid, const uint32_t remote_qpn,
-             const uint32_t remote_psn, const union ibv_gid remote_gid,
-             std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-             std::shared_ptr<srq> srq = nullptr);
+  basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
+           const uint32_t remote_psn, const union ibv_gid remote_gid,
+           std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
+           std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief Construct a new qp object. The Queue Pair will be created with the
@@ -232,10 +231,10 @@ public:
    * @param srq (Optional) If set, all recv work requests will be posted to this
    * SRQ.
    */
-  queue_pair(const uint16_t remote_lid, const uint32_t remote_qpn,
-             const uint32_t remote_psn, const union ibv_gid remote_gid,
-             std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-             std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
+  basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
+           const uint32_t remote_psn, const union ibv_gid remote_gid,
+           std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
+           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief Construct a new qp object. The constructed Queue Pair will be in
@@ -246,8 +245,8 @@ public:
    * @param srq (Optional) If set, all recv work requests will be posted to this
    * SRQ.
    */
-  queue_pair(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-             std::shared_ptr<srq> srq = nullptr);
+  basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
+           std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief Construct a new qp object. The constructed Queue Pair will be in
@@ -259,8 +258,8 @@ public:
    * @param srq (Optional) If set, all recv work requests will be posted to this
    * SRQ.
    */
-  queue_pair(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-             std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
+  basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
+           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief This function is used to post a send work request to the Queue Pair.
@@ -497,7 +496,7 @@ public:
    * @return std::shared_ptr<pd> Pointer to the PD.
    */
   std::shared_ptr<pd> pd_ptr() const;
-  ~queue_pair();
+  ~basic_qp();
 
   /**
    * @brief This function transitions the Queue Pair to the RTR state.
@@ -542,7 +541,7 @@ private:
                      struct ibv_recv_wr *&bad_recv_wr) const;
 };
 
-using qp = queue_pair<AtExecutor>;
+using qp = basic_qp<AtExecutor>;
 
 } // namespace rdmapp
 
