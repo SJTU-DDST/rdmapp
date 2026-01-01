@@ -16,9 +16,9 @@ namespace rdmapp {
 
 template <executor_concept Executor>
 basic_cq_poller<Executor>::basic_cq_poller(std::shared_ptr<cq> cq,
-                                           std::unique_ptr<Executor> executor,
+                                           std::shared_ptr<Executor> executor,
                                            size_t batch_size)
-    : wc_vec_(batch_size), cq_(cq), executor_(std::move(executor)),
+    : wc_vec_(batch_size), cq_(std::move(cq)), executor_(std::move(executor)),
       poller_thread_(&basic_cq_poller::worker, this) {}
 
 template <executor_concept Executor>

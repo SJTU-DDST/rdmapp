@@ -65,11 +65,14 @@ template <ExecutionThread Thread> class basic_executor {
 
 public:
   /**
-   * @brief Construct a new executor object
+   * @brief Construct a new executor object with worker thread number
    */
   basic_executor(int nr_workers = 4)
   requires std::same_as<Thread, executor_t::WorkerThread>;
 
+  /**
+   * @brief Construct a new executor object
+   */
   basic_executor()
   requires std::same_as<Thread, executor_t::ThisThread>;
 
