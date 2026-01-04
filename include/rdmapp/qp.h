@@ -545,7 +545,7 @@ private:
                      struct ibv_recv_wr *&bad_recv_wr) const;
 };
 
-using qp = basic_qp<qp_strategy::AtExecutor>;
+using qp = basic_qp<qp_strategy::AtPoller>;
 
 template <typename T>
 concept qp_concept = std::is_same_v<T, basic_qp<qp_strategy::AtPoller>> ||

@@ -97,7 +97,7 @@ concept executor_concept =
     std::same_as<T, basic_executor<executor_t::ThisThread>> ||
     std::same_as<T, basic_executor<executor_t::WorkerThread>>;
 
-using executor = basic_executor<executor_t::ThisThread>;
+using executor = basic_executor<executor_t::WorkerThread>;
 
 static_assert(executor_concept<executor>);
 
