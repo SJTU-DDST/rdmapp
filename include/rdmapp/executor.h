@@ -67,7 +67,7 @@ public:
   /**
    * @brief Construct a new executor object with worker thread number
    */
-  basic_executor(int nr_workers = 4)
+  basic_executor(int nr_workers = 2)
   requires std::same_as<Thread, executor_t::WorkerThread>;
 
   /**

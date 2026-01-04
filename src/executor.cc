@@ -40,7 +40,7 @@ struct executor_impl {
   moodycamel::ConcurrentQueue<ibv_wc> work_chan_;
   std::vector<std::jthread> workers_;
 
-  executor_impl(int workers) : work_chan_(4) {
+  executor_impl(int workers) : work_chan_(workers * 4) {
     for (int i = 0; i < workers; i++) {
       workers_.emplace_back(&executor_impl::worker_fn, this);
     }
@@ -55,14 +55,10 @@ struct executor_impl {
   void worker_fn(std::stop_token token) {
     log::debug("[executor] worker_fn: spawn at thread_id={}",
                std::this_thread::get_id());
-    constexpr int batch_size = 4;
-    std::array<ibv_wc, batch_size> wc_buffer;
     while (!token.stop_requested()) {
-      if (int k = work_chan_.try_dequeue_bulk(wc_buffer.begin(), batch_size);
-          k > 0) {
-        for (int i = 0; i < k; i++)
-          executor_t::execute_callback(wc_buffer[i]);
-      }
+      ibv_wc wc;
+      if (work_chan_.try_dequeue(wc))
+        executor_t::execute_callback(wc);
     }
   }
 };
