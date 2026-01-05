@@ -40,7 +40,7 @@ struct executor_impl {
   moodycamel::ConcurrentQueue<ibv_wc> work_chan_;
   std::vector<std::jthread> workers_;
 
-  executor_impl(int workers) : work_chan_(workers * 4) {
+  executor_impl(int workers) : work_chan_(workers * 128) {
     for (int i = 0; i < workers; i++) {
       workers_.emplace_back(&executor_impl::worker_fn, this);
     }
@@ -79,7 +79,10 @@ template <ExecutionThread Thread>
 void basic_executor<Thread>::process_wc(
     std::span<struct ibv_wc> const wc) noexcept {
   if constexpr (std::is_same_v<Thread, executor_t::WorkerThread>) {
-    impl_->work_chan_.enqueue_bulk(wc.data(), wc.size());
+    bool ok = impl_->work_chan_.try_enqueue_bulk(wc.data(), wc.size());
+    if (!ok) [[unlikely]] {
+      log::error("executor: failed to process wc, queue is not empty");
+    }
   } else if constexpr (std::is_same_v<Thread, executor_t::ThisThread>) {
     for (auto const &w : wc) {
       executor_t::execute_callback(w);
