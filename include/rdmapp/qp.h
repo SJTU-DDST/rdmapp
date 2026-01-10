@@ -395,6 +395,8 @@ public:
    */
   [[nodiscard]] asio::awaitable<send_result> send(mr_view local_mr);
 
+  [[nodiscard]] send_awaitable coro_send(mr_view local_mr);
+
   /**
    * @brief This function writes a registered local memory region to remote.
    *
@@ -476,6 +478,8 @@ public:
    * length of received data, and second indicating the immediate value if any.
    */
   [[nodiscard]] asio::awaitable<recv_result> recv(mr_view local_mr = mr_view());
+
+  [[nodiscard]] recv_awaitable coro_recv(mr_view local_mr = mr_view());
 
   /**
    * @brief This function serializes a Queue Pair prepared to be sent to a

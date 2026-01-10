@@ -647,6 +647,11 @@ auto basic_qp<Strategy>::send(mr_view local_mr)
 }
 
 template <typename Strategy>
+auto basic_qp<Strategy>::coro_send(mr_view local_mr) -> send_awaitable {
+  return send_awaitable{this->weak_from_this(), local_mr, IBV_WR_SEND};
+}
+
+template <typename Strategy>
 auto basic_qp<Strategy>::write(mr_view remote_mr, mr_view local_mr)
     -> asio::awaitable<send_result> {
   auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
@@ -793,6 +798,11 @@ auto basic_qp<Strategy>::recv(mr_view local_mr)
   return make_asio_awaitable(
       std::make_unique<basic_qp<Strategy>::recv_awaitable>(
           this->weak_from_this(), local_mr));
+}
+
+template <typename Strategy>
+auto basic_qp<Strategy>::coro_recv(mr_view local_mr) -> recv_awaitable {
+  return recv_awaitable{this->weak_from_this(), local_mr};
 }
 
 template <typename Strategy> void basic_qp<Strategy>::destroy() {
