@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef RDAMPP_QP_HPP__
+#define RDAMPP_QP_HPP__
+
 #include <asio/awaitable.hpp>
 #include <atomic>
 #include <coroutine>
@@ -61,6 +64,22 @@ struct use_native_awaitable_t {};
 
 inline constexpr auto use_asio_awaitable = use_asio_awaitable_t{};
 inline constexpr auto use_native_awaitable = use_native_awaitable_t{};
+inline constexpr auto default_completion_token = use_asio_awaitable;
+
+template <typename Token, typename Awaitable, typename Result>
+using awaitable_return_t = std::conditional_t<
+    std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
+    asio::awaitable<Result>, Awaitable>;
+template <typename T>
+concept ValidCompletionToken =
+    std::is_same_v<std::remove_cvref_t<T>, use_asio_awaitable_t> ||
+    std::is_same_v<std::remove_cvref_t<T>, use_native_awaitable_t>;
+
+namespace detail {
+template <typename T> auto span_const_cast(std::span<const T> s) noexcept {
+  return std::span<T>(const_cast<T *>(s.data()), s.size());
+}
+} // namespace detail
 
 /**
  * @brief This class is an abstraction of an Infiniband Queue Pair.
@@ -174,21 +193,19 @@ public:
     uint32_t await_resume() const;
 
     std::exception_ptr unhandled_exception() const;
+
+    [[nodiscard]] operator asio::awaitable<send_result>() &&;
+
     constexpr bool is_rdma() const;
     constexpr bool is_atomic() const;
   };
 
-  [[nodiscard]] asio::awaitable<send_result>
-  make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable);
-
   template <typename... Args, typename CompletionToken>
-  auto make_send_awaitable(CompletionToken &&token, Args &&...args) noexcept {
-    if constexpr (token == use_asio_awaitable) {
-      return make_asio_awaitable(
-          std::make_unique<send_awaitable>(std::forward<Args>(args)...));
-    } else {
-      return send_awaitable{std::forward<Args>(args)...};
-    }
+  requires ValidCompletionToken<CompletionToken>
+  static auto make_send_awaitable(CompletionToken token [[maybe_unused]],
+                                  Args &&...args) noexcept
+      -> awaitable_return_t<CompletionToken, send_awaitable, send_result> {
+    return send_awaitable{std::forward<Args>(args)...};
   };
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
@@ -215,10 +232,18 @@ public:
     recv_result await_resume() const;
 
     std::exception_ptr unhandled_exception() const;
+
+    [[nodiscard]] operator asio::awaitable<recv_result>() &&;
   };
 
-  [[nodiscard]] asio::awaitable<recv_result>
-  make_asio_awaitable(std::unique_ptr<recv_awaitable> awaitable);
+  template <typename CompletionToken, typename... Args>
+  requires ValidCompletionToken<CompletionToken>
+  static auto make_recv_awaitable(CompletionToken token [[maybe_unused]],
+                                  Args &&...args) noexcept
+      -> awaitable_return_t<CompletionToken, recv_awaitable, recv_result> {
+    return recv_awaitable{std::forward<Args>(args)...};
+  };
+
   /**
    * @brief Construct a new qp object. The Queue Pair will be created with the
    * given remote Queue Pair parameters. Once constructed, the Queue Pair will
@@ -311,8 +336,13 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result>
-  send(std::span<std::byte const> buffer);
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto send(std::span<std::byte const> buffer,
+                          CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->shared_from_this(),
+                               detail::span_const_cast(buffer), IBV_WR_SEND);
+  }
 
   /**
    * @brief This method writes local buffer to a remote memory region. The local
@@ -324,8 +354,14 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data written.
    */
-  [[nodiscard]] asio::awaitable<send_result>
-  write(mr_view remote_mr, std::span<std::byte const> buffer);
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto write(mr_view remote_mr, std::span<std::byte const> buffer,
+                           CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->shared_from_this(),
+                               detail::span_const_cast(buffer),
+                               IBV_WR_RDMA_WRITE, remote_mr);
+  }
 
   /**
    * @brief This method writes local buffer to a remote memory region with an
@@ -339,9 +375,15 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data written.
    */
-  [[nodiscard]] asio::awaitable<send_result>
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
   write_with_imm(mr_view remote_mr, std::span<std::byte const> buffer,
-                 uint32_t imm);
+                 uint32_t imm,
+                 CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->shared_from_this(),
+                               detail::span_const_cast(buffer),
+                               IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
+  }
 
   /**
    * @brief This method reads to local buffer from a remote memory region. The
@@ -354,8 +396,12 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data read.
    */
-  [[nodiscard]] asio::awaitable<send_result> read(mr_view remote_mr,
-                                                  std::span<std::byte> buffer);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto read(mr_view remote_mr, std::span<std::byte> buffer,
+                          CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->shared_from_this(), buffer,
+                               IBV_WR_RDMA_READ, remote_mr);
+  }
 
   /**
    * @brief This method performs an atomic fetch-and-add operation on the
@@ -369,8 +415,14 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result>
-  fetch_and_add(mr_view remote_mr, std::span<std::byte> buffer, uint64_t add);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
+  fetch_and_add(mr_view remote_mr, std::span<std::byte> buffer, uint64_t add,
+                CompletionToken token = default_completion_token) {
+    assert(pd_->device_ptr()->is_fetch_and_add_supported());
+    return make_send_awaitable(token, this->shared_from_this(), buffer,
+                               IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr, add);
+  }
 
   /**
    * @brief This method performs an atomic compare-and-swap operation on the
@@ -385,9 +437,19 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result>
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
+
   compare_and_swap(mr_view remote_mr, std::span<std::byte> buffer,
-                   uint64_t compare, uint64_t swap);
+                   uint64_t compare, uint64_t swap,
+                   CompletionToken token = default_completion_token) {
+
+    assert(pd_->device_ptr()->is_compare_and_swap_supported());
+    return make_send_awaitable(token, this->shared_from_this(), buffer,
+                               IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr, compare,
+                               swap);
+  }
 
   /**
    * @brief This method posts a recv request on the queue pair. The buffer
@@ -399,7 +461,11 @@ public:
    * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
    * length of received data, and second indicating the immediate value if any.
    */
-  [[nodiscard]] asio::awaitable<recv_result> recv(std::span<std::byte> buffer);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto recv(std::span<std::byte> buffer,
+                          CompletionToken token = default_completion_token) {
+    return make_recv_awaitable(token, this->shared_from_this(), buffer);
+  }
 
   /**
    * @brief This function sends a registered local memory region to remote.
@@ -409,9 +475,13 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result> send(mr_view local_mr);
 
-  [[nodiscard]] send_awaitable coro_send(mr_view local_mr);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto send(mr_view local_mr,
+                          CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_SEND);
+  }
 
   /**
    * @brief This function writes a registered local memory region to remote.
@@ -423,8 +493,13 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data written.
    */
-  [[nodiscard]] asio::awaitable<send_result> write(mr_view remote_mr,
-                                                   mr_view local_mr);
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto write(mr_view remote_mr, mr_view local_mr,
+                           CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_RDMA_WRITE, remote_mr);
+  }
 
   /**
    * @brief This function writes a registered local memory region to remote
@@ -437,8 +512,13 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data written.
    */
-  [[nodiscard]] asio::awaitable<send_result>
-  write_with_imm(mr_view remote_mr, mr_view local_mr, uint32_t imm);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
+  write_with_imm(mr_view remote_mr, mr_view local_mr, uint32_t imm,
+                 CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
+  }
 
   /**
    * @brief This function reads to local memory region from remote.
@@ -449,8 +529,13 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data read.
    */
-  [[nodiscard]] asio::awaitable<send_result> read(mr_view remote_mr,
-                                                  mr_view local_mr);
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto read(mr_view remote_mr, mr_view local_mr,
+                          CompletionToken token = default_completion_token) {
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_RDMA_READ, remote_mr);
+  }
 
   /**
    * @brief This function performs an atomic fetch-and-add operation on the
@@ -463,8 +548,14 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result>
-  fetch_and_add(mr_view remote_mr, mr_view local_mr, uint64_t add);
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
+  fetch_and_add(mr_view remote_mr, mr_view local_mr, uint64_t add,
+                CompletionToken token = default_completion_token) {
+    assert(pd_->device_ptr()->is_fetch_and_add_supported());
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr, add);
+  }
 
   /**
    * @brief This function performs an atomic compare-and-swap operation on the
@@ -478,10 +569,17 @@ public:
    * @return asio::awaitable<send_result> A coroutine returning result of the
    * data sent.
    */
-  [[nodiscard]] asio::awaitable<send_result> compare_and_swap(mr_view remote_mr,
-                                                              mr_view local_mr,
-                                                              uint64_t compare,
-                                                              uint64_t swap);
+
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]] auto
+  compare_and_swap(mr_view remote_mr, mr_view local_mr, uint64_t compare,
+                   uint64_t swap,
+                   CompletionToken &&token = default_completion_token) {
+    assert(pd_->device_ptr()->is_compare_and_swap_supported());
+    return make_send_awaitable(token, this->weak_from_this(), local_mr,
+                               IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr, compare,
+                               swap);
+  }
 
   /**
    * @brief This function posts a recv request on the queue pair. The buffer
@@ -493,9 +591,13 @@ public:
    * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
    * length of received data, and second indicating the immediate value if any.
    */
-  [[nodiscard]] asio::awaitable<recv_result> recv(mr_view local_mr = mr_view());
 
-  [[nodiscard]] recv_awaitable coro_recv(mr_view local_mr = mr_view());
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]]
+  auto recv(mr_view local_mr = mr_view(),
+            CompletionToken token = default_completion_token) {
+    return make_recv_awaitable(token, this->weak_from_this(), local_mr);
+  }
 
   /**
    * @brief This function serializes a Queue Pair prepared to be sent to a
@@ -593,3 +695,4 @@ static_assert(qp_concept<qp>);
  * This is a simple example of implementing simple rpc with Queue Pair using
  * write_with_imm/recv
  */
+#endif

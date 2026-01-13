@@ -34,11 +34,6 @@
 
 namespace rdmapp {
 
-static std::span<std::byte> remove_const(std::span<std::byte const> buffer) {
-  return std::span<std::byte>(const_cast<std::byte *>(buffer.data()),
-                              buffer.size());
-}
-
 template <typename Strategy>
 std::atomic<uint32_t> basic_qp<Strategy>::next_sq_psn = 1;
 
@@ -491,10 +486,9 @@ static auto complete(auto &&self, auto &&awaitable) noexcept {
 }
 
 template <typename Strategy>
-auto basic_qp<Strategy>::make_asio_awaitable(
-    std::unique_ptr<send_awaitable> awaitable) -> asio::awaitable<send_result> {
+basic_qp<Strategy>::send_awaitable::operator asio::awaitable<send_result>() && {
   std::shared_ptr<send_awaitable> awaitable_ptr =
-      std::shared_ptr<send_awaitable>(std::move(awaitable));
+      std::make_shared<send_awaitable>(std::move(*this));
   return asio::async_compose<decltype(asio::use_awaitable),
                              void(std::exception_ptr, send_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
@@ -517,9 +511,9 @@ auto basic_qp<Strategy>::make_asio_awaitable(
 }
 
 template <typename Strategy>
-auto basic_qp<Strategy>::make_asio_awaitable(
-    std::unique_ptr<recv_awaitable> awaitable) -> asio::awaitable<recv_result> {
-  auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
+[[nodiscard]] basic_qp<Strategy>::recv_awaitable::operator asio::awaitable<
+    recv_result>() && {
+  auto awaitable_ptr = std::make_shared<recv_awaitable>(std::move(*this));
   return asio::async_compose<decltype(asio::use_awaitable),
                              void(std::exception_ptr, recv_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
@@ -574,129 +568,6 @@ auto basic_qp<Strategy>::make_asio_awaitable(
                    fmt::ptr(awaitable_ptr.get()), fmt::ptr(callback));
       },
       asio::use_awaitable);
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::send(std::span<std::byte const> buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<send_awaitable>(
-      this->shared_from_this(), remove_const(buffer), IBV_WR_SEND);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write(mr_view remote_mr,
-                               std::span<std::byte const> const buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<send_awaitable>(
-      this->shared_from_this(), remove_const(buffer), IBV_WR_RDMA_WRITE,
-      remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write_with_imm(mr_view remote_mr,
-                                        std::span<std::byte const> buffer,
-                                        uint32_t imm)
-    -> asio::awaitable<send_result> {
-
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), remove_const(buffer),
-      IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::read(mr_view remote_mr, std::span<std::byte> buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_RDMA_READ, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::fetch_and_add(mr_view remote_mr,
-                                       std::span<std::byte> buffer,
-                                       uint64_t add)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
-      add);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::compare_and_swap(mr_view remote_mr,
-                                          std::span<std::byte> buffer,
-                                          uint64_t compare, uint64_t swap)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
-      compare, swap);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::send(mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_SEND);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::coro_send(mr_view local_mr) -> send_awaitable {
-  return send_awaitable{this->weak_from_this(), local_mr, IBV_WR_SEND};
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write(mr_view remote_mr, mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write_with_imm(mr_view remote_mr, mr_view local_mr,
-                                        uint32_t imm)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr,
-      imm);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::read(mr_view remote_mr, mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_READ, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::fetch_and_add(mr_view remote_mr, mr_view local_mr,
-                                       uint64_t add)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
-      add);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::compare_and_swap(mr_view remote_mr, mr_view local_mr,
-                                          uint64_t compare, uint64_t swap)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
-      compare, swap);
-  return make_asio_awaitable(std::move(awaitable));
 }
 
 template <typename Strategy>
@@ -782,27 +653,6 @@ basic_qp<Strategy>::recv_awaitable::await_resume() const {
     std::rethrow_exception(exception_);
   }
   return resume();
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::recv(std::span<std::byte> buffer)
-    -> asio::awaitable<recv_result> {
-  return make_asio_awaitable(
-      std::make_unique<basic_qp<Strategy>::recv_awaitable>(
-          this->shared_from_this(), buffer));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::recv(mr_view local_mr)
-    -> asio::awaitable<recv_result> {
-  return make_asio_awaitable(
-      std::make_unique<basic_qp<Strategy>::recv_awaitable>(
-          this->weak_from_this(), local_mr));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::coro_recv(mr_view local_mr) -> recv_awaitable {
-  return recv_awaitable{this->weak_from_this(), local_mr};
 }
 
 template <typename Strategy> void basic_qp<Strategy>::destroy() {
