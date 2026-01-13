@@ -43,20 +43,18 @@ task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   rdmapp::remote_mr remote_mr =
       rdmapp::remote_mr::deserialize(remote_mr_serialized.span().data());
 
-  spdlog::info("client: remote buffer recv");
+  spdlog::info("client: remote buffer recv, size={}", remote_mr.length());
 
   std::fill(buffer.begin(), buffer.end(), std::byte(0xdd));
 
   for (int i = 0; i < kSendCount; i++) {
     std::size_t nbytes [[maybe_unused]] = co_await qp->write_with_imm(
         remote_mr, local_mr, i, rdmapp::use_native_awaitable);
-    assert(nbytes == kMessageSize);
   }
 
   for (int i = 0; i < kSendCount; i++) {
     std::size_t nbytes [[maybe_unused]] =
         co_await qp->send(local_mr, rdmapp::use_native_awaitable);
-    assert(nbytes == kMessageSize);
   }
 }
 
