@@ -1,5 +1,4 @@
 #pragma once
-
 #ifndef RDAMPP_QP_HPP__
 #define RDAMPP_QP_HPP__
 
@@ -28,16 +27,39 @@
 
 namespace rdmapp {
 
+/**
+ * @brief A structure holding the deserialized data required to connect to a
+ * remote Queue Pair. This is typically received from a remote peer to establish
+ * a connection.
+ */
 struct deserialized_qp {
+  /**
+   * @brief The header portion of the serialized QP data.
+   */
   struct qp_header {
+    /**
+     * @brief The total size of the serialized header in bytes.
+     */
     static constexpr size_t kSerializedSize =
         sizeof(uint16_t) + 3 * sizeof(uint32_t) + sizeof(union ibv_gid);
+    /// The Local Identifier (LID) of the remote port.
     uint16_t lid;
+    /// The Queue Pair Number (QPN) of the remote QP.
     uint32_t qp_num;
+    /// The starting Sequence Number (PSN) for the Send Queue of the remote QP.
     uint32_t sq_psn;
+    /// The size of the user-defined data that follows the header.
     uint32_t user_data_size;
+    /// The Global Identifier (GID) of the remote port.
     union ibv_gid gid;
   } header;
+
+  /**
+   * @brief Deserializes QP information from a given iterator.
+   * @tparam It An iterator type pointing to a sequence of bytes.
+   * @param it The iterator to read the serialized data from.
+   * @return A `deserialized_qp` object populated with the data.
+   */
   template <class It> static deserialized_qp deserialize(It it) {
     deserialized_qp des_qp;
     detail::deserialize(it, des_qp.header.lid);
@@ -47,43 +69,102 @@ struct deserialized_qp {
     detail::deserialize(it, des_qp.header.gid);
     return des_qp;
   }
+
+  /// Optional user-defined data that was sent along with the QP header.
   std::vector<std::byte> user_data;
 };
 
+/**
+ * @brief Defines strategies for coroutine resumption after an RDMA operation
+ * completes.
+ */
 namespace qp_strategy {
+/**
+ * @brief A tag type indicating that the coroutine should be resumed directly
+ *        within the completion queue polling thread. This offers the lowest
+ * latency but runs the coroutine's logic on the poller thread.
+ */
 struct AtPoller {};
+/**
+ * @brief A tag type indicating that the coroutine should be resumed by posting
+ *        to the associated asio executor. This moves the coroutine's logic off
+ *        the poller thread, which can be useful for thread safety and workload
+ * management.
+ */
 struct AtExecutor {};
 
+/**
+ * @brief Concept to validate that a type is a valid QP resume strategy.
+ */
 template <typename T>
 concept strategy_concept = std::same_as<T, qp_strategy::AtPoller> ||
                            std::same_as<T, qp_strategy::AtExecutor>;
 } // namespace qp_strategy
 
+/// @brief A tag type to request an `asio::awaitable` return from an
+/// asynchronous operation.
 struct use_asio_awaitable_t {};
+/// @brief A tag type to request a native awaitable object return from an
+/// asynchronous operation.
 struct use_native_awaitable_t {};
 
+/// @brief An instance of `use_asio_awaitable_t` to be used as a completion
+/// token.
 inline constexpr auto use_asio_awaitable = use_asio_awaitable_t{};
+/// @brief An instance of `use_native_awaitable_t` to be used as a completion
+/// token.
 inline constexpr auto use_native_awaitable = use_native_awaitable_t{};
+
+/// @brief The default completion token used by asynchronous QP operations.
 inline constexpr auto default_completion_token = use_asio_awaitable;
 
+/**
+ * @brief A type alias to select the return type of an awaitable operation based
+ * on a completion token.
+ * @tparam Token The completion token type (`use_asio_awaitable_t` or
+ * `use_native_awaitable_t`).
+ * @tparam Awaitable The native awaitable type used when
+ * `use_native_awaitable_t` is specified.
+ * @tparam Result The result type of the asynchronous operation.
+ */
 template <typename Token, typename Awaitable, typename Result>
 using awaitable_return_t = std::conditional_t<
     std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
     asio::awaitable<Result>, Awaitable>;
+
+/**
+ * @brief Concept to validate that a type is a valid completion token.
+ */
 template <typename T>
 concept ValidCompletionToken =
     std::is_same_v<std::remove_cvref_t<T>, use_asio_awaitable_t> ||
     std::is_same_v<std::remove_cvref_t<T>, use_native_awaitable_t>;
 
 namespace detail {
+/**
+ * @brief A helper function to cast away the constness from a `std::span`.
+ * @note This is potentially unsafe and should only be used when an underlying
+ * API requires a non-const buffer for an operation that is known to be
+ * read-only.
+ * @tparam T The element type of the span.
+ * @param s The `std::span<const T>` to cast.
+ * @return A `std::span<T>` pointing to the same data.
+ */
 template <typename T> auto span_const_cast(std::span<const T> s) noexcept {
   return std::span<T>(const_cast<T *>(s.data()), s.size());
 }
 } // namespace detail
 
 /**
- * @brief This class is an abstraction of an Infiniband Queue Pair.
+ * @brief A C++ abstraction for an InfiniBand Queue Pair (QP).
  *
+ * This class wraps the `ibv_qp` object and provides a modern, coroutine-based
+ * interface for performing RDMA operations such as send, receive, read, write,
+ * and atomics. It manages the QP lifecycle and simplifies resource handling
+ * through RAII and smart pointers.
+ *
+ * @tparam ResumeStrategy The strategy for resuming coroutines after an
+ * operation completes. See `rdmapp::qp_strategy`.
  */
 template <typename ResumeStrategy>
 class basic_qp : public noncopyable,
@@ -94,7 +175,6 @@ class basic_qp : public noncopyable,
   uint32_t sq_psn_;
   void (basic_qp::*post_recv_fn)(struct ibv_recv_wr const &recv_wr,
                                  struct ibv_recv_wr *&bad_recv_wr) const;
-
   std::shared_ptr<pd> pd_;
   std::shared_ptr<cq> recv_cq_;
   std::shared_ptr<cq> send_cq_;
@@ -103,23 +183,33 @@ class basic_qp : public noncopyable,
 
   /**
    * @brief Creates a new Queue Pair. The Queue Pair will be in the RESET state.
-   *
    */
   void create();
 
   /**
-   * @brief Initializes the Queue Pair. The Queue Pair will be in the INIT
-   * state.
-   *
+   * @brief Initializes the Queue Pair. The Queue Pair will be transitioned to
+   * the INIT state.
    */
   void init();
 
+  /**
+   * @brief Destroys the underlying `ibv_qp` resource.
+   */
   void destroy();
 
 public:
-  // TODO: maybe use send_result in the future
+  /// The result type for send-like operations, typically representing the
+  /// number of bytes transferred.
   using send_result = uint32_t;
 
+  /**
+   * @brief An awaitable object representing a pending send, RDMA, or atomic
+   * operation.
+   *
+   * This object is returned by methods like `send`, `write`, `read`, and
+   * `compare_and_swap`. It is both a native C++20 awaitable and convertible to
+   * an `asio::awaitable`.
+   */
   class [[nodiscard]] send_awaitable
       : public std::enable_shared_from_this<send_awaitable> {
     friend basic_qp;
@@ -128,7 +218,6 @@ public:
     mr_view local_mr_view_;
     mr_view remote_mr_view_;
     std::exception_ptr exception_;
-
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #if defined(__clang__)
@@ -147,7 +236,6 @@ public:
       /* hence we store the write bytes here as return*/
       uint32_t write_byte_len_;
     };
-
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
@@ -166,7 +254,6 @@ public:
     send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t compare, uint64_t swap);
-
     send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode); // send
     send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
@@ -175,7 +262,6 @@ public:
     send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint32_t imm); // write with imm
-
     send_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer,
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t add); // fetch and add
@@ -183,23 +269,38 @@ public:
                    enum ibv_wr_opcode opcode, mr_view remote_mr,
                    uint64_t compare, uint64_t swap); // cas
 
-    // NOTE: support asio::async_compose for asio::awaitable
-    // how to use: https://github.com/chriskohlhoff/asio/issues/795
+    // Internal methods for integration with different asynchronous models.
     bool suspend(executor_t::callback_ptr callback) noexcept;
     send_result resume() const;
 
+    // C++20 Coroutine Awaitable Interface
     bool await_ready() const noexcept;
     bool await_suspend(std::coroutine_handle<> h) noexcept;
     uint32_t await_resume() const;
 
+    /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
 
+    /// @brief Implicitly converts the object to an `asio::awaitable` for use in
+    /// Asio coroutines.
     [[nodiscard]] operator asio::awaitable<send_result>() &&;
 
+    /// @brief Checks if the operation is an RDMA operation (read or write).
     constexpr bool is_rdma() const;
+    /// @brief Checks if the operation is an atomic operation.
     constexpr bool is_atomic() const;
   };
 
+  /**
+   * @brief Factory function for creating a `send_awaitable` with a specific
+   * completion token.
+   * @tparam CompletionToken The completion token type.
+   * @tparam Args The types of arguments for the `send_awaitable` constructor.
+   * @param token The completion token instance.
+   * @param args The arguments to forward to the `send_awaitable` constructor.
+   * @return An awaitable object whose type is determined by the
+   * `CompletionToken`.
+   */
   template <typename... Args, typename CompletionToken>
   requires ValidCompletionToken<CompletionToken>
   static auto make_send_awaitable(CompletionToken token [[maybe_unused]],
@@ -208,7 +309,16 @@ public:
     return send_awaitable{std::forward<Args>(args)...};
   };
 
+  /// The result type for receive operations: a pair of {bytes received,
+  /// optional immediate data}.
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
+
+  /**
+   * @brief An awaitable object representing a pending receive operation.
+   *
+   * This object is returned by the `recv` method. It is both a native C++20
+   * awaitable and convertible to an `asio::awaitable`.
+   */
   class [[nodiscard]] recv_awaitable {
     friend basic_qp;
     std::weak_ptr<basic_qp> qp_;
@@ -224,18 +334,33 @@ public:
     recv_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr);
     recv_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer);
 
+    // Internal methods for integration with different asynchronous models.
     bool suspend(executor_t::callback_ptr fn) noexcept;
     recv_result resume() const;
 
+    // C++20 Coroutine Awaitable Interface
     bool await_ready() const noexcept;
     bool await_suspend(std::coroutine_handle<> h) noexcept;
     recv_result await_resume() const;
 
+    /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
 
+    /// @brief Implicitly converts the object to an `asio::awaitable` for use in
+    /// Asio coroutines.
     [[nodiscard]] operator asio::awaitable<recv_result>() &&;
   };
 
+  /**
+   * @brief Factory function for creating a `recv_awaitable` with a specific
+   * completion token.
+   * @tparam CompletionToken The completion token type.
+   * @tparam Args The types of arguments for the `recv_awaitable` constructor.
+   * @param token The completion token instance.
+   * @param args The arguments to forward to the `recv_awaitable` constructor.
+   * @return An awaitable object whose type is determined by the
+   * `CompletionToken`.
+   */
   template <typename CompletionToken, typename... Args>
   requires ValidCompletionToken<CompletionToken>
   static auto make_recv_awaitable(CompletionToken token [[maybe_unused]],
@@ -245,98 +370,101 @@ public:
   };
 
   /**
-   * @brief Construct a new qp object. The Queue Pair will be created with the
-   * given remote Queue Pair parameters. Once constructed, the Queue Pair will
-   * be in the RTS state.
+   * @brief Constructs a new QP and connects it to a remote peer.
+   *        The QP will be in the Ready-To-Send (RTS) state upon construction.
    *
-   * @param remote_lid The LID of the remote Queue Pair.
-   * @param remote_qpn The QPN of the remote Queue Pair.
-   * @param remote_psn The PSN of the remote Queue Pair.
-   * @param pd The protection domain of the new Queue Pair.
-   * @param cq The completion queue of both send and recv work completions.
-   * @param srq (Optional) If set, all recv work requests will be posted to this
-   * SRQ.
+   * @param remote_lid The LID of the remote QP's port.
+   * @param remote_qpn The QPN of the remote QP.
+   * @param remote_psn The initial PSN of the remote QP.
+   * @param remote_gid The GID of the remote QP's port.
+   * @param pd The Protection Domain for this QP.
+   * @param cq The Completion Queue for both send and receive completions.
+   * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
+   * will be posted here.
    */
   basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
            std::shared_ptr<srq> srq = nullptr);
-
   /**
-   * @brief Construct a new qp object. The Queue Pair will be created with the
-   * given remote Queue Pair parameters. Once constructed, the Queue Pair will
-   * be in the RTS state.
+   * @brief Constructs a new QP and connects it to a remote peer with separate
+   * CQs. The QP will be in the Ready-To-Send (RTS) state upon construction.
    *
-   * @param remote_lid The LID of the remote Queue Pair.
-   * @param remote_qpn The QPN of the remote Queue Pair.
-   * @param remote_psn The PSN of the remote Queue Pair.
-   * @param pd The protection domain of the new Queue Pair.
-   * @param recv_cq The completion queue of recv work completions.
-   * @param send_cq The completion queue of send work completions.
-   * @param srq (Optional) If set, all recv work requests will be posted to this
-   * SRQ.
+   * @param remote_lid The LID of the remote QP's port.
+   * @param remote_qpn The QPN of the remote QP.
+   * @param remote_psn The initial PSN of the remote QP.
+   * @param remote_gid The GID of the remote QP's port.
+   * @param pd The Protection Domain for this QP.
+   * @param recv_cq The Completion Queue for receive completions.
+   * @param send_cq The Completion Queue for send completions.
+   * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
+   * will be posted here.
    */
   basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
            std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
-
   /**
-   * @brief Construct a new qp object. The constructed Queue Pair will be in
-   * INIT state.
+   * @brief Constructs a new QP in the INIT state.
+   *        The QP is not connected and must be manually transitioned to RTR and
+   * RTS.
    *
-   * @param pd The protection domain of the new Queue Pair.
-   * @param cq The completion queue of both send and recv work completions.
-   * @param srq (Optional) If set, all recv work requests will be posted to this
-   * SRQ.
+   * @param pd The Protection Domain for this QP.
+   * @param cq The Completion Queue for both send and receive completions.
+   * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
+   * will be posted here.
    */
   basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
            std::shared_ptr<srq> srq = nullptr);
-
   /**
-   * @brief Construct a new qp object. The constructed Queue Pair will be in
-   * INIT state.
+   * @brief Constructs a new QP in the INIT state with separate CQs.
+   *        The QP is not connected and must be manually transitioned to RTR and
+   * RTS.
    *
-   * @param pd The protection domain of the new Queue Pair.
-   * @param recv_cq The completion queue of recv work completions.
-   * @param send_cq The completion queue of send work completions.
-   * @param srq (Optional) If set, all recv work requests will be posted to this
-   * SRQ.
+   * @param pd The Protection Domain for this QP.
+   * @param recv_cq The Completion Queue for receive completions.
+   * @param send_cq The Completion Queue for send completions.
+   * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
+   * will be posted here.
    */
   basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
            std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
   /**
-   * @brief This function is used to post a send work request to the Queue Pair.
+   * @brief Posts a raw send Work Request (`ibv_send_wr`) to the QP's Send
+   * Queue.
    *
-   * @param recv_wr The work request to post.
-   * @param bad_recv_wr A pointer to a work request that will be set to the
-   * first work request that failed to post.
+   * @param send_wr The send work request to post.
+   * @param bad_send_wr A pointer that will be set to the failed work request on
+   * error.
    */
   void post_send(struct ibv_send_wr const &send_wr,
                  struct ibv_send_wr *&bad_send_wr);
-
   /**
-   * @brief This function is used to post a recv work request to the Queue Pair.
-   * It will be posted to either RQ or SRQ depending on whether or not SRQ is
-   * set.
+   * @brief Posts a raw receive Work Request (`ibv_recv_wr`) to the appropriate
+   * receive queue. This will post to the QP's own Receive Queue (RQ) or the
+   * associated Shared Receive Queue (SRQ) if one was provided during
+   * construction.
    *
-   * @param recv_wr The work request to post.
-   * @param bad_recv_wr A pointer to a work request that will be set to the
-   * first work request that failed to post.
+   * @param recv_wr The receive work request to post.
+   * @param bad_recv_wr A pointer that will be set to the failed work request on
+   * error.
    */
   void post_recv(struct ibv_recv_wr const &recv_wr,
                  struct ibv_recv_wr *&bad_recv_wr) const;
 
   /**
-   * @brief This method sends local buffer to remote. The address will be
-   * registered as a memory region first and then deregistered upon completion.
+   * @brief Sends data from a local buffer to the remote peer.
+   *        The local buffer is temporarily registered as a memory region for
+   * the duration of the operation.
    *
-   * @param buffer span to local buffer. It should be valid until completion.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param buffer A span over the local data buffer. It must remain valid until
+   * the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes sent.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto send(std::span<std::byte const> buffer,
                           CompletionToken token = default_completion_token) {
@@ -345,16 +473,19 @@ public:
   }
 
   /**
-   * @brief This method writes local buffer to a remote memory region. The local
-   * buffer will be registered as a memory region first and then deregistered
-   * upon completion.
+   * @brief Writes data from a local buffer to a remote memory region.
+   *        The local buffer is temporarily registered as a memory region for
+   * the duration of the operation.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param buffer span to local buffer. It should be valid until completion.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data written.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to write to.
+   * @param buffer A span over the local data buffer. It must remain valid until
+   * the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes
+   * written.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto write(mr_view remote_mr, std::span<std::byte const> buffer,
                            CompletionToken token = default_completion_token) {
@@ -364,16 +495,20 @@ public:
   }
 
   /**
-   * @brief This method writes local buffer to a remote memory region with an
-   * immediate value. The local buffer will be registered as a memory region
-   * first and then deregistered upon completion.
+   * @brief Writes data from a local buffer to a remote memory region with an
+   * immediate value. The local buffer is temporarily registered as a memory
+   * region. The remote peer will receive the immediate value along with the
+   * completion notification.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param buffer span to local buffer. It should be valid until
-   * completion.
-   * @param imm The immediate value.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data written.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to write to.
+   * @param buffer A span over the local data buffer. It must remain valid until
+   * the operation completes.
+   * @param imm The 32-bit immediate value to send.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes
+   * written.
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
@@ -386,15 +521,17 @@ public:
   }
 
   /**
-   * @brief This method reads to local buffer from a remote memory region. The
-   * local buffer will be registered as a memory region first and then
-   * deregistered upon completion.
+   * @brief Reads data from a remote memory region into a local buffer.
+   *        The local buffer is temporarily registered as a memory region for
+   * the duration of the operation.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param buffer span to local buffer. It should be valid until
-   * completion.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data read.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to read from.
+   * @param buffer A span over the local data buffer where the read data will be
+   * stored. It must remain valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes read.
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto read(mr_view remote_mr, std::span<std::byte> buffer,
@@ -404,16 +541,19 @@ public:
   }
 
   /**
-   * @brief This method performs an atomic fetch-and-add operation on the
-   * given remote memory region. The local buffer will be registered as a
-   * memory region first and then deregistered upon completion.
+   * @brief Performs an atomic Fetch-And-Add operation on a remote 64-bit value.
+   *        The original value is fetched into the local buffer. The local
+   * buffer is temporarily registered.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param buffer span to local buffer. It should be valid until
-   * completion.
-   * @param add The delta.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region (must be 8 bytes).
+   * @param buffer A span over the local data buffer (must be 8 bytes) to store
+   * the original value. It must remain valid until the operation completes.
+   * @param add The value to add to the remote integer.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes fetched
+   * (always 8).
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
@@ -425,26 +565,26 @@ public:
   }
 
   /**
-   * @brief This method performs an atomic compare-and-swap operation on the
-   * given remote memory region. The local buffer will be registered as a
-   * memory region first and then deregistered upon completion.
+   * @brief Performs an atomic Compare-And-Swap operation on a remote 64-bit
+   * value. The original value is fetched into the local buffer. The local
+   * buffer is temporarily registered.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param buffer span to local buffer. It should be valid until
-   * completion.
-   * @param compare The expected old value.
-   * @param swap The desired new value.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region (must be 8 bytes).
+   * @param buffer A span over the local data buffer (must be 8 bytes) to store
+   * the original value. It must remain valid until the operation completes.
+   * @param compare The expected value at the remote address.
+   * @param swap The new value to write if the comparison succeeds.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes fetched
+   * (always 8).
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
-
   compare_and_swap(mr_view remote_mr, std::span<std::byte> buffer,
                    uint64_t compare, uint64_t swap,
                    CompletionToken token = default_completion_token) {
-
     assert(pd_->device_ptr()->is_compare_and_swap_supported());
     return make_send_awaitable(token, this->shared_from_this(), buffer,
                                IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr, compare,
@@ -452,14 +592,17 @@ public:
   }
 
   /**
-   * @brief This method posts a recv request on the queue pair. The buffer
-   * will be filled with data received. The local buffer will be registered as
-   * a memory region first and then deregistered upon completion.
-   * @param buffer span to local buffer. It should be valid until
-   * completion.
-   * @return asio::awaitable<recv_result> A coroutine returning
-   * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
-   * length of received data, and second indicating the immediate value if any.
+   * @brief Posts a receive buffer to be filled with incoming data.
+   *        The local buffer is temporarily registered as a memory region for
+   * the duration of the operation.
+   *
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param buffer A span over the local buffer to receive data. It must remain
+   * valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with a pair containing the
+   * number of bytes received and an optional immediate value.
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto recv(std::span<std::byte> buffer,
@@ -468,14 +611,16 @@ public:
   }
 
   /**
-   * @brief This function sends a registered local memory region to remote.
+   * @brief Sends data from a pre-registered local memory region to the remote
+   * peer.
    *
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param local_mr A view of the pre-registered local memory region. It must
+   * remain valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes sent.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto send(mr_view local_mr,
                           CompletionToken token = default_completion_token) {
@@ -484,16 +629,18 @@ public:
   }
 
   /**
-   * @brief This function writes a registered local memory region to remote.
+   * @brief Writes data from a pre-registered local memory region to a remote
+   * memory region.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * controlled by a smart pointer.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data written.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to write to.
+   * @param local_mr A view of the pre-registered local memory region. It must
+   * remain valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes
+   * written.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto write(mr_view remote_mr, mr_view local_mr,
                            CompletionToken token = default_completion_token) {
@@ -502,15 +649,18 @@ public:
   }
 
   /**
-   * @brief This function writes a registered local memory region to remote
-   * with an immediate value.
+   * @brief Writes data from a pre-registered local memory region to a remote
+   * memory region with an immediate value.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @param imm The immediate value.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data written.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to write to.
+   * @param local_mr A view of the pre-registered local memory region. It must
+   * remain valid until the operation completes.
+   * @param imm The 32-bit immediate value to send.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes
+   * written.
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
@@ -521,15 +671,17 @@ public:
   }
 
   /**
-   * @brief This function reads to local memory region from remote.
+   * @brief Reads data from a remote memory region into a pre-registered local
+   * memory region.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data read.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region to read from.
+   * @param local_mr A view of the pre-registered local memory region to store
+   * the data. It must remain valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes read.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto read(mr_view remote_mr, mr_view local_mr,
                           CompletionToken token = default_completion_token) {
@@ -538,15 +690,19 @@ public:
   }
 
   /**
-   * @brief This function performs an atomic fetch-and-add operation on the
-   * given remote memory region.
+   * @brief Performs an atomic Fetch-And-Add using a pre-registered local memory
+   * region.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @param add The delta.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region (must be 8 bytes).
+   * @param local_mr A view of the pre-registered local memory region to store
+   * the original value (must be 8 bytes). It must remain valid until the
+   * operation completes.
+   * @param add The value to add to the remote integer.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes fetched
+   * (always 8).
    */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
@@ -558,18 +714,21 @@ public:
   }
 
   /**
-   * @brief This function performs an atomic compare-and-swap operation on the
-   * given remote memory region.
+   * @brief Performs an atomic Compare-And-Swap using a pre-registered local
+   * memory region.
    *
-   * @param remote_mr Remote memory region handle.
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @param compare The expected old value.
-   * @param swap The desired new value.
-   * @return asio::awaitable<send_result> A coroutine returning result of the
-   * data sent.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param remote_mr A view of the remote memory region (must be 8 bytes).
+   * @param local_mr A view of the pre-registered local memory region to store
+   * the original value (must be 8 bytes). It must remain valid until the
+   * operation completes.
+   * @param compare The expected value at the remote address.
+   * @param swap The new value to write if the comparison succeeds.
+   * @param token The completion token.
+   * @return An awaitable object that completes with the number of bytes fetched
+   * (always 8).
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]] auto
   compare_and_swap(mr_view remote_mr, mr_view local_mr, uint64_t compare,
@@ -582,22 +741,33 @@ public:
   }
 
   /**
-   * @brief This function posts a recv request on the queue pair. The buffer
-   * will be filled with data received.
+   * @brief Posts a pre-registered memory region as a receive buffer.
    *
-   * @param local_mr Registered local memory region, which should be valid until
-   * completion.
-   * @return asio::awaitable<recv_result> A coroutine returning
-   * std::pair<uint32_t, std::optional<uint32_t>>, with first indicating the
-   * length of received data, and second indicating the immediate value if any.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param local_mr A view of the pre-registered local memory region to receive
+   * data into. It must remain valid until the operation completes.
+   * @param token The completion token.
+   * @return An awaitable object that completes with a pair containing the
+   * number of bytes received and an optional immediate value.
    */
-
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]]
   auto recv(mr_view local_mr,
             CompletionToken token = default_completion_token) {
     return make_recv_awaitable(token, this->weak_from_this(), local_mr);
   }
+
+  /**
+   * @brief Waits for a receive completion without a pre-posted buffer (if using
+   * SRQ with zero-copy semantics).
+   * @note This is typically used with SRQs where buffers are managed
+   * separately.
+   * @tparam CompletionToken The completion token type that determines the
+   * return type.
+   * @param token The completion token.
+   * @return An awaitable object that completes when a message is received.
+   */
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]]
   auto recv(CompletionToken token = default_completion_token)
@@ -607,78 +777,93 @@ public:
   }
 
   /**
-   * @brief This function serializes a Queue Pair prepared to be sent to a
-   * buffer.
+   * @brief Serializes the QP's connection data into a byte vector for
+   * transmission to a remote peer.
    *
-   * @return std::vector<std::byte> The serialized QP.
+   * @return A `std::vector<std::byte>` containing the serialized data.
    */
   std::vector<std::byte> serialize() const;
 
   /**
-   * @brief This function provides access to the extra user data of the Queue
-   * Pair.
+   * @brief Provides access to user-defined data associated with this QP.
    *
-   * @return std::vector<std::byte>& The extra user data.
+   * This can be used to store application-specific metadata.
+   *
+   * @return A reference to the `std::vector<std::byte>` holding the user data.
    */
   std::vector<std::byte> &user_data();
 
   /**
-   * @brief This function provides access to the Protection Domain of the
-   * Queue Pair.
+   * @brief Gets the Protection Domain (`pd`) associated with this QP.
    *
-   * @return std::shared_ptr<pd> Pointer to the PD.
+   * @return A `std::shared_ptr<pd>` to the Protection Domain.
    */
   std::shared_ptr<pd> pd_ptr() const;
+
+  /**
+   * @brief Destroys the Queue Pair and releases all associated `ibverbs`
+   * resources.
+   */
   ~basic_qp();
 
   /**
-   * @brief This function transitions the Queue Pair to the RTR state.
+   * @brief Transitions the Queue Pair from INIT to Ready-To-Receive (RTR)
+   * state.
    *
-   * @param remote_lid The remote LID.
-   * @param remote_qpn The remote QPN.
-   * @param remote_psn The remote PSN.
-   * @param remote_gid The remote GID.
+   * @param remote_lid The LID of the remote QP's port.
+   * @param remote_qpn The QPN of the remote QP.
+   * @param remote_psn The initial PSN of the remote QP.
+   * @param remote_gid The GID of the remote QP's port.
    */
   void rtr(uint16_t remote_lid, uint32_t remote_qpn, uint32_t remote_psn,
            union ibv_gid remote_gid);
 
   /**
-   * @brief This function transitions the Queue Pair to the RTS state.
-   *
+   * @brief Transitions the Queue Pair from RTR to Ready-To-Send (RTS) state.
    */
   void rts();
 
   /**
-   * @brief This function transitions the Queue Pair to the ERROR state.
-   *
+   * @brief Transitions the Queue Pair to the ERROR state.
    */
   void err();
 
 private:
   /**
-   * @brief This function posts a recv request on the Queue Pair's own RQ.
-   *
-   * @param recv_wr
-   * @param bad_recv_wr
+   * @brief Posts a receive work request to the QP's own Receive Queue (RQ).
+   * @param recv_wr The work request to post.
+   * @param bad_recv_wr A pointer that will be set to the failed work request on
+   * error.
    */
   void post_recv_rq(struct ibv_recv_wr const &recv_wr,
                     struct ibv_recv_wr *&bad_recv_wr) const;
-
   /**
-   * @brief This function posts a send request on the Queue Pair's SRQ.
-   *
-   * @param recv_wr
-   * @param bad_recv_wr
+   * @brief Posts a receive work request to the associated Shared Receive Queue
+   * (SRQ).
+   * @param recv_wr The work request to post.
+   * @param bad_recv_wr A pointer that will be set to the failed work request on
+   * error.
    */
   void post_recv_srq(struct ibv_recv_wr const &recv_wr,
                      struct ibv_recv_wr *&bad_recv_wr) const;
 };
 
+/**
+ * @brief A convenience alias for a `basic_qp` using the default `AtPoller`
+ * resumption strategy.
+ */
 using qp = basic_qp<qp_strategy::AtPoller>;
 
+/**
+ * @brief Concept to validate that a type is a specialization of `basic_qp`.
+ */
 template <typename T>
 concept qp_concept = std::is_same_v<T, basic_qp<qp_strategy::AtPoller>> ||
                      std::is_same_v<T, basic_qp<qp_strategy::AtExecutor>>;
+
+/**
+ * @brief Concept to validate that a type is a valid QP strategy tag.
+ */
 template <typename Strategy>
 concept qp_tag_concept = std::same_as<Strategy, qp_strategy::AtPoller> ||
                          std::same_as<Strategy, qp_strategy::AtExecutor>;
@@ -687,19 +872,20 @@ static_assert(qp_concept<qp>);
 
 } // namespace rdmapp
 
-/** \example helloworld.cc
+/**
+ * @example helloworld.cc
  * This is an example of how to create a Queue Pair connected with a remote peer
  * and perform send/recv/read/write/atomic operations on the QP.
  */
-
-/** \example write_bw.cc
- * This is an example of testing the bandwidth of a Queue Pair using send/recv.
+/**
+ * @example write_bw.cc
+ * This is an example of testing the bandwidth of a Queue Pair using RDMA write.
  * It also demonstrates how to run multiple tasks in background concurrently and
  * wait for them to complete.
  */
-
-/** \example rpc.cc
- * This is a simple example of implementing simple rpc with Queue Pair using
- * write_with_imm/recv
+/**
+ * @example rpc.cc
+ * This is a simple example of implementing an RPC-like pattern with a Queue
+ * Pair using write_with_imm/recv operations.
  */
 #endif
