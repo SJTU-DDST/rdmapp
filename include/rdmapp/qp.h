@@ -594,9 +594,16 @@ public:
 
   template <typename CompletionToken = decltype(default_completion_token)>
   [[nodiscard]]
-  auto recv(mr_view local_mr = mr_view(),
+  auto recv(mr_view local_mr,
             CompletionToken token = default_completion_token) {
     return make_recv_awaitable(token, this->weak_from_this(), local_mr);
+  }
+  template <typename CompletionToken = decltype(default_completion_token)>
+  [[nodiscard]]
+  auto recv(CompletionToken token = default_completion_token)
+  requires ValidCompletionToken<CompletionToken>
+  {
+    return make_recv_awaitable(token, this->weak_from_this(), mr_view{});
   }
 
   /**
