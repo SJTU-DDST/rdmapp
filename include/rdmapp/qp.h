@@ -56,6 +56,12 @@ concept strategy_concept = std::same_as<T, qp_strategy::AtPoller> ||
                            std::same_as<T, qp_strategy::AtExecutor>;
 } // namespace qp_strategy
 
+struct use_asio_awaitable_t {};
+struct use_native_awaitable_t {};
+
+inline constexpr auto use_asio_awaitable = use_asio_awaitable_t{};
+inline constexpr auto use_native_awaitable = use_native_awaitable_t{};
+
 /**
  * @brief This class is an abstraction of an Infiniband Queue Pair.
  *
@@ -174,6 +180,16 @@ public:
 
   [[nodiscard]] asio::awaitable<send_result>
   make_asio_awaitable(std::unique_ptr<send_awaitable> awaitable);
+
+  template <typename... Args, typename CompletionToken>
+  auto make_send_awaitable(CompletionToken &&token, Args &&...args) noexcept {
+    if constexpr (token == use_asio_awaitable) {
+      return make_asio_awaitable(
+          std::make_unique<send_awaitable>(std::forward<Args>(args)...));
+    } else {
+      return send_awaitable{std::forward<Args>(args)...};
+    }
+  };
 
   using recv_result = std::pair<uint32_t, std::optional<uint32_t>>;
   class [[nodiscard]] recv_awaitable {
