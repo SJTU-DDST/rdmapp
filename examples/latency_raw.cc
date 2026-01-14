@@ -23,6 +23,7 @@
 #include <rdmapp/rdmapp.h>
 
 constexpr std::size_t kMessageSize = 4096;
+constexpr int kBatchSize = 100'000;
 #ifdef RDMAPP_BUILD_DEBUG
 constexpr int kSendCount = 100;
 #else
@@ -70,8 +71,19 @@ task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
   spdlog::info("server: local buffer sent");
 
   auto start_time = std::chrono::high_resolution_clock::now();
+  auto last_batch_time = start_time;
   for (int i = 0; i < kSendCount; i++) {
     co_await qp->recv(rdmapp::use_native_awaitable);
+
+    if (i && (i % kBatchSize == 0)) {
+      auto now = std::chrono::high_resolution_clock::now();
+      auto batch_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              now - last_batch_time);
+      spdlog::info("[write_with_imm/recv] batch {:7d}: avg latency {:.3f}us", i,
+                   static_cast<double>(batch_duration.count()) / kBatchSize);
+      last_batch_time = now;
+    }
   }
   auto end_time = std::chrono::high_resolution_clock::now();
   auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -83,8 +95,20 @@ task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
                static_cast<double>(total_duration.count()) / kSendCount);
 
   start_time = std::chrono::high_resolution_clock::now();
+  last_batch_time = start_time;
+
   for (int i = 0; i < kSendCount; i++) {
     co_await qp->recv(local_mr, rdmapp::use_native_awaitable);
+
+    if (i && (i % kBatchSize == 0)) {
+      auto now = std::chrono::high_resolution_clock::now();
+      auto batch_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              now - last_batch_time);
+      spdlog::info("[send/recv] batch {:7d}: avg latency {:.3f}us", i,
+                   static_cast<double>(batch_duration.count()) / kBatchSize);
+      last_batch_time = now;
+    }
   }
   end_time = std::chrono::high_resolution_clock::now();
 
@@ -130,9 +154,11 @@ int main(int argc, char *argv[]) {
 
   switch (argc) {
   case 2: {
+    auto cq2 = std::make_shared<rdmapp::cq>(device);
+    auto cq_poller2 = std::make_unique<rdmapp::native_cq_poller>(cq2);
     auto io_ctx = std::make_shared<asio::io_context>(1);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = rdmapp::qp_acceptor(io_ctx, port, pd, cq);
+    auto acceptor = rdmapp::qp_acceptor(io_ctx, port, pd, cq, cq2);
     server(*io_ctx, acceptor);
     break;
   }

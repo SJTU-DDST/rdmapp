@@ -18,7 +18,6 @@
 #include "rdmapp/completion_token.h"
 #include "rdmapp/cq.h"
 #include "rdmapp/device.h"
-#include "rdmapp/executor.h"
 #include "rdmapp/mr.h"
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"

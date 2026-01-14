@@ -602,8 +602,10 @@ bool basic_qp::recv_awaitable::await_suspend(
 basic_qp::recv_result basic_qp::recv_awaitable::resume() const {
   check_wc_status(state_.wc_status, "failed to recv");
   if (state_.wc_flags & IBV_WC_WITH_IMM) {
+#ifdef RDMAPP_BUILD_DEBUG
     log::trace("recv resume: imm: wr_id={:#x} imm={}", state_.wr_id(),
                state_.imm_data);
+#endif
     return std::make_pair(state_.byte_len, state_.imm_data);
   }
   return std::make_pair(state_.byte_len, std::nullopt);
