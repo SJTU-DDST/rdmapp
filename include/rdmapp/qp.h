@@ -15,6 +15,7 @@
 
 #include <infiniband/verbs.h>
 
+#include "rdmapp/completion_token.h"
 #include "rdmapp/cq.h"
 #include "rdmapp/device.h"
 #include "rdmapp/executor.h"
@@ -74,23 +75,6 @@ struct deserialized_qp {
   std::vector<std::byte> user_data;
 };
 
-/// @brief A tag type to request an `asio::awaitable` return from an
-/// asynchronous operation.
-struct use_asio_awaitable_t {};
-/// @brief A tag type to request a native awaitable object return from an
-/// asynchronous operation.
-struct use_native_awaitable_t {};
-
-/// @brief An instance of `use_asio_awaitable_t` to be used as a completion
-/// token.
-inline constexpr auto use_asio_awaitable = use_asio_awaitable_t{};
-/// @brief An instance of `use_native_awaitable_t` to be used as a completion
-/// token.
-inline constexpr auto use_native_awaitable = use_native_awaitable_t{};
-
-/// @brief The default completion token used by asynchronous QP operations.
-inline constexpr auto default_completion_token = use_asio_awaitable;
-
 /**
  * @brief A type alias to select the return type of an awaitable operation based
  * on a completion token.
@@ -104,14 +88,6 @@ template <typename Token, typename Awaitable, typename Result>
 using awaitable_return_t = std::conditional_t<
     std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
     asio::awaitable<Result>, Awaitable>;
-
-/**
- * @brief Concept to validate that a type is a valid completion token.
- */
-template <typename T>
-concept ValidCompletionToken =
-    std::is_same_v<std::remove_cvref_t<T>, use_asio_awaitable_t> ||
-    std::is_same_v<std::remove_cvref_t<T>, use_native_awaitable_t>;
 
 namespace detail {
 /**
