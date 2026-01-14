@@ -34,61 +34,40 @@
 
 namespace rdmapp {
 
-static std::span<std::byte> remove_const(std::span<std::byte const> buffer) {
-  return std::span<std::byte>(const_cast<std::byte *>(buffer.data()),
-                              buffer.size());
-}
+std::atomic<uint32_t> basic_qp::next_sq_psn = 1;
 
-template <typename Strategy>
-std::atomic<uint32_t> basic_qp<Strategy>::next_sq_psn = 1;
-
-template <typename Strategy>
-basic_qp<Strategy>::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
-                             uint32_t remote_psn, union ibv_gid remote_gid,
-                             std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-                             std::shared_ptr<srq> srq)
+basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
+                   uint32_t remote_psn, union ibv_gid remote_gid,
+                   std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
+                   std::shared_ptr<srq> srq)
     : basic_qp(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq,
                srq) {}
 
-template <typename Strategy>
-basic_qp<Strategy>::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
-                             uint32_t remote_psn, union ibv_gid remote_gid,
-                             std::shared_ptr<pd> pd,
-                             std::shared_ptr<cq> recv_cq,
-                             std::shared_ptr<cq> send_cq,
-                             std::shared_ptr<srq> srq)
+basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
+                   uint32_t remote_psn, union ibv_gid remote_gid,
+                   std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
+                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq)
     : basic_qp(pd, recv_cq, send_cq, srq) {
   rtr(remote_lid, remote_qpn, remote_psn, remote_gid);
   rts();
 }
 
-template <typename Strategy>
-basic_qp<Strategy>::basic_qp(std::shared_ptr<rdmapp::pd> pd,
-                             std::shared_ptr<cq> cq, std::shared_ptr<srq> srq)
+basic_qp::basic_qp(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<cq> cq,
+                   std::shared_ptr<srq> srq)
     : basic_qp(pd, cq, cq, srq) {}
 
-template <typename Strategy>
-basic_qp<Strategy>::basic_qp(std::shared_ptr<rdmapp::pd> pd,
-                             std::shared_ptr<cq> recv_cq,
-                             std::shared_ptr<cq> send_cq,
-                             std::shared_ptr<srq> srq)
+basic_qp::basic_qp(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<cq> recv_cq,
+                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq)
     : qp_(nullptr), pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq) {
   create();
   init();
 }
 
-template <typename Strategy>
-std::vector<std::byte> &basic_qp<Strategy>::user_data() {
-  return user_data_;
-}
+std::vector<std::byte> &basic_qp::user_data() { return user_data_; }
 
-template <typename Strategy>
-std::shared_ptr<pd> basic_qp<Strategy>::pd_ptr() const {
-  return pd_;
-}
+std::shared_ptr<pd> basic_qp::pd_ptr() const { return pd_; }
 
-template <typename Strategy>
-std::vector<std::byte> basic_qp<Strategy>::serialize() const {
+std::vector<std::byte> basic_qp::serialize() const {
   std::vector<std::byte> buffer;
   auto it = std::back_inserter(buffer);
   detail::serialize(pd_->device_ptr()->lid(), it);
@@ -100,7 +79,7 @@ std::vector<std::byte> basic_qp<Strategy>::serialize() const {
   return buffer;
 }
 
-template <typename Strategy> void basic_qp<Strategy>::create() {
+void basic_qp::create() {
   struct ibv_qp_init_attr qp_init_attr = {};
   ::bzero(&qp_init_attr, sizeof(qp_init_attr));
   qp_init_attr.qp_type = IBV_QPT_RC;
@@ -116,9 +95,9 @@ template <typename Strategy> void basic_qp<Strategy>::create() {
   if (srq_ != nullptr) {
     qp_init_attr.srq = srq_->srq_;
     raw_srq_ = srq_->srq_;
-    post_recv_fn = &basic_qp<Strategy>::post_recv_srq;
+    post_recv_fn = &basic_qp::post_recv_srq;
   } else {
-    post_recv_fn = &basic_qp<Strategy>::post_recv_rq;
+    post_recv_fn = &basic_qp::post_recv_rq;
   }
 
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
@@ -128,7 +107,7 @@ template <typename Strategy> void basic_qp<Strategy>::create() {
              pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
-template <typename Strategy> void basic_qp<Strategy>::init() {
+void basic_qp::init() {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_INIT;
@@ -149,9 +128,8 @@ template <typename Strategy> void basic_qp<Strategy>::init() {
   }
 }
 
-template <typename Strategy>
-void basic_qp<Strategy>::rtr(uint16_t remote_lid, uint32_t remote_qpn,
-                             uint32_t remote_psn, union ibv_gid remote_gid) {
+void basic_qp::rtr(uint16_t remote_lid, uint32_t remote_qpn,
+                   uint32_t remote_psn, union ibv_gid remote_gid) {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_RTR;
@@ -184,7 +162,7 @@ void basic_qp<Strategy>::rtr(uint16_t remote_lid, uint32_t remote_qpn,
   }
 }
 
-template <typename Strategy> void basic_qp<Strategy>::rts() {
+void basic_qp::rts() {
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_RTS;
@@ -208,9 +186,8 @@ template <typename Strategy> void basic_qp<Strategy>::rts() {
   }
 }
 
-template <typename Strategy>
-void basic_qp<Strategy>::post_send(struct ibv_send_wr const &send_wr,
-                                   struct ibv_send_wr *&bad_send_wr) {
+void basic_qp::post_send(struct ibv_send_wr const &send_wr,
+                         struct ibv_send_wr *&bad_send_wr) {
   log::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
              send_wr.sg_list->addr);
   check_rc(::ibv_post_send(qp_, const_cast<struct ibv_send_wr *>(&send_wr),
@@ -218,15 +195,13 @@ void basic_qp<Strategy>::post_send(struct ibv_send_wr const &send_wr,
            "failed to post send");
 }
 
-template <typename Strategy>
-void basic_qp<Strategy>::post_recv(struct ibv_recv_wr const &recv_wr,
-                                   struct ibv_recv_wr *&bad_recv_wr) const {
+void basic_qp::post_recv(struct ibv_recv_wr const &recv_wr,
+                         struct ibv_recv_wr *&bad_recv_wr) const {
   (this->*(post_recv_fn))(recv_wr, bad_recv_wr);
 }
 
-template <typename Strategy>
-void basic_qp<Strategy>::post_recv_rq(struct ibv_recv_wr const &recv_wr,
-                                      struct ibv_recv_wr *&bad_recv_wr) const {
+void basic_qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
+                            struct ibv_recv_wr *&bad_recv_wr) const {
   log::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
              fmt::ptr(recv_wr.sg_list),
              recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
@@ -235,101 +210,91 @@ void basic_qp<Strategy>::post_recv_rq(struct ibv_recv_wr const &recv_wr,
            "failed to post recv");
 }
 
-template <typename Strategy>
-void basic_qp<Strategy>::post_recv_srq(struct ibv_recv_wr const &recv_wr,
-                                       struct ibv_recv_wr *&bad_recv_wr) const {
+void basic_qp::post_recv_srq(struct ibv_recv_wr const &recv_wr,
+                             struct ibv_recv_wr *&bad_recv_wr) const {
   check_rc(::ibv_post_srq_recv(raw_srq_,
                                const_cast<struct ibv_recv_wr *>(&recv_wr),
                                &bad_recv_wr),
            "failed to post srq recv");
 }
 
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer,
-                                                   enum ibv_wr_opcode opcode)
+basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer,
+                                         enum ibv_wr_opcode opcode)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
-      local_mr_view_(*local_mr_), remote_mr_view_(), wc_(), opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr)
+      local_mr_view_(*local_mr_), remote_mr_view_(), state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
-      local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
-                                                   uint32_t imm)
+      local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr, uint32_t imm)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
-                                                   uint64_t add)
+      state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr, uint64_t add)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), compare_add_(add),
-      opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
-                                                   uint64_t compare,
-                                                   uint64_t swap)
+      state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr, uint64_t compare,
+                                         uint64_t swap)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr),
-      compare_add_(compare), swap_(swap), opcode_(opcode) {}
+      compare_add_(compare), swap_(swap), state_(opcode) {}
 
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr,
-                                                   enum ibv_wr_opcode opcode)
-    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(), wc_(),
-      opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr)
+basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr,
+                                         enum ibv_wr_opcode opcode)
+    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(), state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
-                                                   uint32_t imm)
+      state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr, uint32_t imm)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
-                                                   uint64_t add)
-    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      compare_add_(add), opcode_(opcode) {}
-template <typename Strategy>
-basic_qp<Strategy>::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr,
-                                                   enum ibv_wr_opcode opcode,
-                                                   mr_view remote_mr,
+      state_(opcode) {}
 
-                                                   uint64_t compare,
-                                                   uint64_t swap)
+basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr, uint64_t add)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      compare_add_(compare), swap_(swap), opcode_(opcode) {}
+      compare_add_(add), state_(opcode) {}
+
+basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr,
+                                         enum ibv_wr_opcode opcode,
+                                         mr_view remote_mr,
+
+                                         uint64_t compare, uint64_t swap)
+    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
+      compare_add_(compare), swap_(swap), state_(opcode) {}
 
 static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
   struct ibv_sge sge = {};
@@ -339,32 +304,58 @@ static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
   return sge;
 }
 
-template <typename Strategy>
-bool basic_qp<Strategy>::send_awaitable::await_ready() const noexcept {
-  return false;
-}
-template <typename Strategy>
-bool basic_qp<Strategy>::send_awaitable::await_suspend(
-    std::coroutine_handle<> h) noexcept {
-  auto callback =
-      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
-        wc_ = wc;
-        h.resume();
-      });
-  return this->suspend(callback);
+bool basic_qp::send_awaitable::await_ready() const noexcept { return false; }
+
+basic_qp::operation_state::operation_state() : is_send(false) {}
+
+basic_qp::operation_state::operation_state(enum ibv_wr_opcode opcode)
+    : is_send(true), wr_opcode(opcode) {}
+
+uintptr_t basic_qp::operation_state::wr_id() const noexcept {
+  return reinterpret_cast<uintptr_t>(this);
 }
 
-template <typename Strategy>
-bool basic_qp<Strategy>::send_awaitable::suspend(
-    executor_t::callback_ptr callback) noexcept {
+void basic_qp::operation_state::set_from_wc(ibv_wc const &wc) noexcept {
+  wc_status = wc.status;
+  wc_flags = wc.wc_flags;
+
+  if (!is_send) {
+    byte_len = wc.byte_len;
+    imm_data = wc.imm_data;
+    return;
+  }
+
+  switch (wr_opcode) {
+  case IBV_WR_RDMA_WRITE_WITH_IMM:
+  case IBV_WR_RDMA_WRITE:
+  case IBV_WR_SEND:
+    break;
+  default:
+    byte_len = wc.byte_len;
+  }
+}
+
+void basic_qp::operation_state::resume() const {
+  assert(coro_handle);
+  coro_handle.resume();
+}
+
+bool basic_qp::send_awaitable::await_suspend(
+    std::coroutine_handle<> h) noexcept {
+  state_.coro_handle = h;
+  uintptr_t const wr_id = state_.wr_id();
+  return this->suspend(wr_id);
+}
+
+bool basic_qp::send_awaitable::suspend(uintptr_t wr_id) noexcept {
   auto send_sge = fill_local_sge(local_mr_view_);
 
   struct ibv_send_wr send_wr = {};
   struct ibv_send_wr *bad_send_wr = nullptr;
-  send_wr.opcode = opcode_;
+  send_wr.opcode = state_.wr_opcode;
   send_wr.next = nullptr;
   send_wr.num_sge = 1;
-  send_wr.wr_id = reinterpret_cast<uint64_t>(callback);
+  send_wr.wr_id = reinterpret_cast<uint64_t>(wr_id);
   send_wr.send_flags = IBV_SEND_SIGNALED;
   send_wr.sg_list = &send_sge;
   if (is_rdma()) {
@@ -372,18 +363,17 @@ bool basic_qp<Strategy>::send_awaitable::suspend(
     send_wr.wr.rdma.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.rdma.rkey = remote_mr_view_.rkey();
-    if (opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM) {
+    if (state_.wr_opcode == IBV_WR_RDMA_WRITE_WITH_IMM) {
       send_wr.imm_data = imm_;
-    } else if (opcode_ == IBV_WR_RDMA_WRITE) {
-      write_byte_len_ = local_mr_view_.length();
     }
+    state_.byte_len = local_mr_view_.length();
   } else if (is_atomic()) {
     assert(remote_mr_view_.addr() != nullptr);
     send_wr.wr.atomic.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.atomic.rkey = remote_mr_view_.rkey();
     send_wr.wr.atomic.compare_add = compare_add_;
-    if (opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP) {
+    if (state_.wr_opcode == IBV_WR_ATOMIC_CMP_AND_SWP) {
       send_wr.wr.atomic.swap = swap_;
     }
   }
@@ -393,36 +383,29 @@ bool basic_qp<Strategy>::send_awaitable::suspend(
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_send: qp expired, use_count=0"));
-      log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_send(send_wr, bad_send_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
-    // NOTE: in that case, cq will not have this event
-    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
 }
 
-template <typename Strategy>
-constexpr bool basic_qp<Strategy>::send_awaitable::is_rdma() const {
-  return opcode_ == IBV_WR_RDMA_READ || opcode_ == IBV_WR_RDMA_WRITE ||
-         opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM;
+constexpr bool basic_qp::send_awaitable::is_rdma() const {
+  return state_.wr_opcode == IBV_WR_RDMA_READ ||
+         state_.wr_opcode == IBV_WR_RDMA_WRITE ||
+         state_.wr_opcode == IBV_WR_RDMA_WRITE_WITH_IMM;
 }
 
-template <typename Strategy>
-constexpr bool basic_qp<Strategy>::send_awaitable::is_atomic() const {
-  return opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP ||
-         opcode_ == IBV_WR_ATOMIC_FETCH_AND_ADD;
+constexpr bool basic_qp::send_awaitable::is_atomic() const {
+  return state_.wr_opcode == IBV_WR_ATOMIC_CMP_AND_SWP ||
+         state_.wr_opcode == IBV_WR_ATOMIC_FETCH_AND_ADD;
 }
 
-template <typename Strategy>
-basic_qp<Strategy>::send_result
-basic_qp<Strategy>::send_awaitable::resume() const {
-  check_wc_status(wc_.status, "failed to send");
+basic_qp::send_result basic_qp::send_awaitable::resume() const {
+  check_wc_status(state_.wc_status, "failed to send");
   /* ref: https://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
    * byte_len: The number of bytes transferred. Relevant if the Receive Queue
    * for incoming Send or RDMA Write with immediate operations. This value
@@ -430,11 +413,10 @@ basic_qp<Strategy>::send_awaitable::resume() const {
    * in the Send Queue for RDMA Read and Atomic operations.
    * */
   /* this field is undefined for rdma write*/
-  return opcode_ == IBV_WR_RDMA_WRITE ? write_byte_len_ : wc_.byte_len;
+  return state_.byte_len;
 }
 
-template <typename Strategy>
-uint32_t basic_qp<Strategy>::send_awaitable::await_resume() const {
+uint32_t basic_qp::send_awaitable::await_resume() const {
   if (exception_) [[unlikely]] {
     std::rethrow_exception(exception_);
   }
@@ -474,27 +456,13 @@ int main() {
 }
 */
 
-template <typename Strategy>
 static auto complete(auto &&self, auto &&awaitable) noexcept {
-  if constexpr (std::is_same_v<Strategy, qp_strategy::AtExecutor>) {
-    asio::dispatch(
-        self->get_executor(), // executor
-        [self = std::move(self), awaitable = std::move(awaitable)]() {
-          self->complete(awaitable->unhandled_exception(), awaitable->resume());
-        } // coroutine resume fn
-    );
-  } else if constexpr (std::is_same_v<Strategy, qp_strategy::AtPoller>) {
-    self->complete(awaitable->unhandled_exception(), awaitable->resume());
-  } else {
-    static_assert(0);
-  }
+  self->complete(awaitable->unhandled_exception(), awaitable->resume());
 }
 
-template <typename Strategy>
-auto basic_qp<Strategy>::make_asio_awaitable(
-    std::unique_ptr<send_awaitable> awaitable) -> asio::awaitable<send_result> {
+basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
   std::shared_ptr<send_awaitable> awaitable_ptr =
-      std::shared_ptr<send_awaitable>(std::move(awaitable));
+      std::make_shared<send_awaitable>(std::move(*this));
   return asio::async_compose<decltype(asio::use_awaitable),
                              void(std::exception_ptr, send_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
@@ -505,21 +473,23 @@ auto basic_qp<Strategy>::make_asio_awaitable(
         auto callback = executor_t::make_callback(
             [awaitable = awaitable_ptr,
              self = self_ptr](struct ibv_wc const &wc) mutable noexcept {
-              awaitable->wc_ = wc;
-              complete<Strategy>(self, awaitable);
+              awaitable->state_.set_from_wc(wc);
+              complete(self, awaitable);
             });
 
-        awaitable_ptr->suspend(callback);
+        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
+          log::error("send_awaitable: fail to suspend, destroy callback");
+          executor_t::destroy_callback(callback);
+        }
         log::trace("send_awaitable: suspended: callback={}",
                    fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
 
-template <typename Strategy>
-auto basic_qp<Strategy>::make_asio_awaitable(
-    std::unique_ptr<recv_awaitable> awaitable) -> asio::awaitable<recv_result> {
-  auto awaitable_ptr = std::shared_ptr<recv_awaitable>(std::move(awaitable));
+[[nodiscard]] basic_qp::recv_awaitable::operator asio::awaitable<recv_result>()
+    && {
+  auto awaitable_ptr = std::make_shared<recv_awaitable>(std::move(*this));
   return asio::async_compose<decltype(asio::use_awaitable),
                              void(std::exception_ptr, recv_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
@@ -561,164 +531,37 @@ auto basic_qp<Strategy>::make_asio_awaitable(
             [self = self_ptr, awaitable = awaitable_ptr,
              complete_called](struct ibv_wc const &wc) mutable noexcept {
               if (!complete_called->test_and_set(std::memory_order_relaxed)) {
-                awaitable->wc_ = wc;
-                complete<Strategy>(self, awaitable);
+                awaitable->state_.set_from_wc(wc);
+                complete(self, awaitable);
               } else {
                 log::debug("recv_awaitable({}): resumed by cancellation",
                            fmt::ptr(awaitable.get()));
               }
             });
 
-        awaitable_ptr->suspend(callback);
+        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
+          log::error("recv_awaitable: suspend error, destroy callback");
+          executor_t::destroy_callback(callback);
+        }
         log::trace("recv_awaitable({}): suspended: callback={}",
                    fmt::ptr(awaitable_ptr.get()), fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
 
-template <typename Strategy>
-auto basic_qp<Strategy>::send(std::span<std::byte const> buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<send_awaitable>(
-      this->shared_from_this(), remove_const(buffer), IBV_WR_SEND);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write(mr_view remote_mr,
-                               std::span<std::byte const> const buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<send_awaitable>(
-      this->shared_from_this(), remove_const(buffer), IBV_WR_RDMA_WRITE,
-      remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write_with_imm(mr_view remote_mr,
-                                        std::span<std::byte const> buffer,
-                                        uint32_t imm)
-    -> asio::awaitable<send_result> {
-
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), remove_const(buffer),
-      IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr, imm);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::read(mr_view remote_mr, std::span<std::byte> buffer)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_RDMA_READ, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::fetch_and_add(mr_view remote_mr,
-                                       std::span<std::byte> buffer,
-                                       uint64_t add)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
-      add);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::compare_and_swap(mr_view remote_mr,
-                                          std::span<std::byte> buffer,
-                                          uint64_t compare, uint64_t swap)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->shared_from_this(), buffer, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
-      compare, swap);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::send(mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_SEND);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::coro_send(mr_view local_mr) -> send_awaitable {
-  return send_awaitable{this->weak_from_this(), local_mr, IBV_WR_SEND};
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write(mr_view remote_mr, mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::write_with_imm(mr_view remote_mr, mr_view local_mr,
-                                        uint32_t imm)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_WRITE_WITH_IMM, remote_mr,
-      imm);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::read(mr_view remote_mr, mr_view local_mr)
-    -> asio::awaitable<send_result> {
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_RDMA_READ, remote_mr);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::fetch_and_add(mr_view remote_mr, mr_view local_mr,
-                                       uint64_t add)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_fetch_and_add_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_ATOMIC_FETCH_AND_ADD, remote_mr,
-      add);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::compare_and_swap(mr_view remote_mr, mr_view local_mr,
-                                          uint64_t compare, uint64_t swap)
-    -> asio::awaitable<send_result> {
-  assert(pd_->device_ptr()->is_compare_and_swap_supported());
-  auto awaitable = std::make_unique<basic_qp<Strategy>::send_awaitable>(
-      this->weak_from_this(), local_mr, IBV_WR_ATOMIC_CMP_AND_SWP, remote_mr,
-      compare, swap);
-  return make_asio_awaitable(std::move(awaitable));
-}
-
-template <typename Strategy>
-basic_qp<Strategy>::recv_awaitable::recv_awaitable(std::shared_ptr<basic_qp> qp,
-                                                   std::span<std::byte> buffer)
+basic_qp::recv_awaitable::recv_awaitable(std::shared_ptr<basic_qp> qp,
+                                         std::span<std::byte> buffer)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size()))),
-      local_mr_view_(*local_mr_), wc_() {}
+      local_mr_view_(*local_mr_), state_() {}
 
-template <typename Strategy>
-basic_qp<Strategy>::recv_awaitable::recv_awaitable(std::weak_ptr<basic_qp> qp,
-                                                   mr_view local_mr)
-    : qp_(qp), local_mr_view_(local_mr), wc_() {}
+basic_qp::recv_awaitable::recv_awaitable(std::weak_ptr<basic_qp> qp,
+                                         mr_view local_mr)
+    : qp_(qp), local_mr_view_(local_mr), state_() {}
 
-template <typename Strategy>
-bool basic_qp<Strategy>::recv_awaitable::await_ready() const noexcept {
-  return false;
-}
+bool basic_qp::recv_awaitable::await_ready() const noexcept { return false; }
 
-template <typename Strategy>
-bool basic_qp<Strategy>::recv_awaitable::suspend(
-    executor_t::callback_ptr callback) noexcept {
+bool basic_qp::recv_awaitable::suspend(uintptr_t wr_id) noexcept {
   ibv_sge recv_sge, *recv_sge_list{nullptr};
   int num_sge{0};
   if (local_mr_view_) {
@@ -730,7 +573,7 @@ bool basic_qp<Strategy>::recv_awaitable::suspend(
   struct ibv_recv_wr recv_wr = {};
   struct ibv_recv_wr *bad_recv_wr = nullptr;
   recv_wr.next = nullptr;
-  recv_wr.wr_id = reinterpret_cast<uint64_t>(callback);
+  recv_wr.wr_id = wr_id;
   recv_wr.num_sge = num_sge;
   recv_wr.sg_list = recv_sge_list;
 
@@ -739,73 +582,43 @@ bool basic_qp<Strategy>::recv_awaitable::suspend(
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_recv: qp expired, use_count=0"));
-      log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
-    log::debug("destroy callback on error: {}", fmt::ptr(callback));
-    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
 }
 
-template <typename Strategy>
-bool basic_qp<Strategy>::recv_awaitable::await_suspend(
+bool basic_qp::recv_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
-  auto callback =
-      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
-        wc_ = wc;
-        h.resume();
-      });
-  return this->suspend(callback);
+  state_.coro_handle = h;
+  uintptr_t const wr_id = state_.wr_id();
+  return this->suspend(wr_id);
 }
 
-template <typename Strategy>
-basic_qp<Strategy>::recv_result
-basic_qp<Strategy>::recv_awaitable::resume() const {
-  check_wc_status(wc_.status, "failed to recv");
-  if (wc_.wc_flags & IBV_WC_WITH_IMM) {
-    log::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id, wc_.imm_data);
-    return std::make_pair(wc_.byte_len, wc_.imm_data);
+basic_qp::recv_result basic_qp::recv_awaitable::resume() const {
+  check_wc_status(state_.wc_status, "failed to recv");
+  if (state_.wc_flags & IBV_WC_WITH_IMM) {
+#ifdef RDMAPP_BUILD_DEBUG
+    log::trace("recv resume: imm: wr_id={:#x} imm={}", state_.wr_id(),
+               state_.imm_data);
+#endif
+    return std::make_pair(state_.byte_len, state_.imm_data);
   }
-  return std::make_pair(wc_.byte_len, std::nullopt);
+  return std::make_pair(state_.byte_len, std::nullopt);
 }
 
-template <typename Strategy>
-basic_qp<Strategy>::recv_result
-basic_qp<Strategy>::recv_awaitable::await_resume() const {
+basic_qp::recv_result basic_qp::recv_awaitable::await_resume() const {
   if (exception_) [[unlikely]] {
     std::rethrow_exception(exception_);
   }
   return resume();
 }
 
-template <typename Strategy>
-auto basic_qp<Strategy>::recv(std::span<std::byte> buffer)
-    -> asio::awaitable<recv_result> {
-  return make_asio_awaitable(
-      std::make_unique<basic_qp<Strategy>::recv_awaitable>(
-          this->shared_from_this(), buffer));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::recv(mr_view local_mr)
-    -> asio::awaitable<recv_result> {
-  return make_asio_awaitable(
-      std::make_unique<basic_qp<Strategy>::recv_awaitable>(
-          this->weak_from_this(), local_mr));
-}
-
-template <typename Strategy>
-auto basic_qp<Strategy>::coro_recv(mr_view local_mr) -> recv_awaitable {
-  return recv_awaitable{this->weak_from_this(), local_mr};
-}
-
-template <typename Strategy> void basic_qp<Strategy>::destroy() {
+void basic_qp::destroy() {
   if (qp_ == nullptr) [[unlikely]] {
     return;
   }
@@ -817,7 +630,7 @@ template <typename Strategy> void basic_qp<Strategy>::destroy() {
   }
 }
 
-template <typename Strategy> void basic_qp<Strategy>::err() {
+void basic_qp::err() {
   struct ibv_qp_attr attr{};
   attr.qp_state = IBV_QPS_ERR;
 
@@ -829,20 +642,14 @@ template <typename Strategy> void basic_qp<Strategy>::err() {
   }
 }
 
-template <typename Strategy>
-std::exception_ptr
-basic_qp<Strategy>::recv_awaitable::unhandled_exception() const {
+std::exception_ptr basic_qp::recv_awaitable::unhandled_exception() const {
   return exception_;
 }
 
-template <typename Strategy>
-std::exception_ptr
-basic_qp<Strategy>::send_awaitable::unhandled_exception() const {
+std::exception_ptr basic_qp::send_awaitable::unhandled_exception() const {
   return exception_;
 }
 
-template <typename Strategy> basic_qp<Strategy>::~basic_qp() { destroy(); }
+basic_qp::~basic_qp() { destroy(); }
 
-template class basic_qp<qp_strategy::AtPoller>;
-template class basic_qp<qp_strategy::AtExecutor>;
 } // namespace rdmapp

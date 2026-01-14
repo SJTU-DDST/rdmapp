@@ -1,11 +1,11 @@
 #pragma once
 
-#include <concepts>
 #include <memory>
 #include <thread>
 
 #include <infiniband/verbs.h>
 
+#include "rdmapp/completion_token.h"
 #include "rdmapp/cq.h"
 #include "rdmapp/executor.h"
 
@@ -16,10 +16,12 @@ namespace rdmapp {
  *
  */
 
-template <executor_concept Executor> class basic_cq_poller {
+template <ExecutionThread Thread, typename CompletionToken>
+requires ValidCompletionToken<CompletionToken>
+class basic_cq_poller {
   std::vector<struct ibv_wc> wc_vec_;
   std::shared_ptr<cq> cq_;
-  std::shared_ptr<Executor> executor_;
+  std::shared_ptr<basic_executor<Thread>> executor_;
 
   std::jthread poller_thread_;
   void worker(std::stop_token token);
@@ -32,21 +34,17 @@ public:
    * @param executor The executor for polled wc callback execution
    * @param batch_size The number of completion entries to poll at a time.
    */
-  basic_cq_poller(
-      std::shared_ptr<cq> cq,
-      std::shared_ptr<Executor> executor = std::make_shared<Executor>(),
-      size_t batch_size = 16);
+  basic_cq_poller(std::shared_ptr<cq> cq,
+                  std::shared_ptr<basic_executor<Thread>> executor =
+                      std::make_shared<basic_executor<Thread>>(),
+                  size_t batch_size = 16);
 
   ~basic_cq_poller();
 };
 
-using cq_poller = basic_cq_poller<executor>;
+using cq_poller = basic_cq_poller<executor_t::ThisThread, use_asio_awaitable_t>;
 
-template <typename T>
-concept cq_poller_concept =
-    std::same_as<T, basic_cq_poller<basic_executor<executor_t::ThisThread>>> ||
-    std::same_as<T, basic_cq_poller<basic_executor<executor_t::WorkerThread>>>;
-
-static_assert(cq_poller_concept<cq_poller>);
+using native_cq_poller =
+    basic_cq_poller<executor_t::ThisThread, use_native_awaitable_t>;
 
 } // namespace rdmapp

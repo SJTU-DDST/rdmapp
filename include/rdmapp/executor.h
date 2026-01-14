@@ -8,6 +8,8 @@
 
 #include <infiniband/verbs.h>
 
+#include "rdmapp/completion_token.h"
+
 #ifdef RDMAPP_BUILD_DEBUG
 #include "rdmapp/detail/logger.h"
 #endif
@@ -38,7 +40,7 @@ template <class T> static callback_ptr make_callback(T &&cb) {
   return ptr;
 }
 
-void execute_callback(struct ibv_wc const &wc) noexcept;
+void execute_callback_fn(struct ibv_wc const &wc) noexcept;
 
 /**
  * @brief Destroy a callback function.
@@ -67,6 +69,7 @@ public:
   /**
    * @brief Construct a new executor object with worker thread number
    */
+
   basic_executor(int nr_workers = 2)
   requires std::same_as<Thread, executor_t::WorkerThread>;
 
@@ -81,6 +84,9 @@ public:
    *
    * @param wc The completion entry to process.
    */
+
+  template <typename CompletionToken>
+  requires ValidCompletionToken<CompletionToken>
   void process_wc(std::span<struct ibv_wc> const wc) noexcept;
 
   /**
@@ -92,13 +98,6 @@ public:
   ~basic_executor();
 };
 
-template <typename T>
-concept executor_concept =
-    std::same_as<T, basic_executor<executor_t::ThisThread>> ||
-    std::same_as<T, basic_executor<executor_t::WorkerThread>>;
-
 using executor = basic_executor<executor_t::ThisThread>;
-
-static_assert(executor_concept<executor>);
 
 } // namespace rdmapp

@@ -81,12 +81,10 @@ asio::awaitable<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   for (int i = 0; i < kSendCount; i++) {
     std::size_t nbytes [[maybe_unused]] =
         co_await qp->write_with_imm(remote_mr, local_mr, i);
-    assert(nbytes == kMessageSize);
   }
 
   for (int i = 0; i < kSendCount; i++) {
     std::size_t nbytes [[maybe_unused]] = co_await qp->send(local_mr);
-    assert(nbytes == kMessageSize);
   }
 }
 

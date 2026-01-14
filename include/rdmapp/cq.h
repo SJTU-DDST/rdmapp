@@ -20,7 +20,7 @@ namespace rdmapp {
 class cq : public noncopyable {
   std::shared_ptr<device> device_;
   struct ibv_cq *cq_;
-  template <typename ResumeStrategy> friend class basic_qp;
+  friend class basic_qp;
 
 public:
   /**
