@@ -20,7 +20,7 @@ void execute_callback(struct ibv_wc const &wc) noexcept {
 #ifdef RDMAPP_BUILD_DEBUG
   log::trace("process_wc[thread={}]: done: {:#x}", thread_id, wc.wr_id);
 #endif
-  destroy_callback(cb);
+  // destroy_callback(cb);
 #ifdef RDMAPP_BUILD_DEBUG
   log::trace("process_wc[thread={}]: callback destroyed: {:#x}", thread_id,
              wc.wr_id);

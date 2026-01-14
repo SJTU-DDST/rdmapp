@@ -74,33 +74,6 @@ struct deserialized_qp {
   std::vector<std::byte> user_data;
 };
 
-/**
- * @brief Defines strategies for coroutine resumption after an RDMA operation
- * completes.
- */
-namespace qp_strategy {
-/**
- * @brief A tag type indicating that the coroutine should be resumed directly
- *        within the completion queue polling thread. This offers the lowest
- * latency but runs the coroutine's logic on the poller thread.
- */
-struct AtPoller {};
-/**
- * @brief A tag type indicating that the coroutine should be resumed by posting
- *        to the associated asio executor. This moves the coroutine's logic off
- *        the poller thread, which can be useful for thread safety and workload
- * management.
- */
-struct AtExecutor {};
-
-/**
- * @brief Concept to validate that a type is a valid QP resume strategy.
- */
-template <typename T>
-concept strategy_concept = std::same_as<T, qp_strategy::AtPoller> ||
-                           std::same_as<T, qp_strategy::AtExecutor>;
-} // namespace qp_strategy
-
 /// @brief A tag type to request an `asio::awaitable` return from an
 /// asynchronous operation.
 struct use_asio_awaitable_t {};
@@ -166,9 +139,8 @@ template <typename T> auto span_const_cast(std::span<const T> s) noexcept {
  * @tparam ResumeStrategy The strategy for resuming coroutines after an
  * operation completes. See `rdmapp::qp_strategy`.
  */
-template <typename ResumeStrategy>
 class basic_qp : public noncopyable,
-                 public std::enable_shared_from_this<basic_qp<ResumeStrategy>> {
+                 public std::enable_shared_from_this<basic_qp> {
   static std::atomic<uint32_t> next_sq_psn;
   struct ibv_qp *qp_;
   struct ibv_srq *raw_srq_;
@@ -852,23 +824,7 @@ private:
  * @brief A convenience alias for a `basic_qp` using the default `AtPoller`
  * resumption strategy.
  */
-using qp = basic_qp<qp_strategy::AtPoller>;
-
-/**
- * @brief Concept to validate that a type is a specialization of `basic_qp`.
- */
-template <typename T>
-concept qp_concept = std::is_same_v<T, basic_qp<qp_strategy::AtPoller>> ||
-                     std::is_same_v<T, basic_qp<qp_strategy::AtExecutor>>;
-
-/**
- * @brief Concept to validate that a type is a valid QP strategy tag.
- */
-template <typename Strategy>
-concept qp_tag_concept = std::same_as<Strategy, qp_strategy::AtPoller> ||
-                         std::same_as<Strategy, qp_strategy::AtExecutor>;
-
-static_assert(qp_concept<qp>);
+using qp = basic_qp;
 
 } // namespace rdmapp
 
