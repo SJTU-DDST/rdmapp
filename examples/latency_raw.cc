@@ -1,10 +1,10 @@
-#include "asio/executor_work_guard.hpp"
-#include "asio/io_context.hpp"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
 #include "task.hpp"
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
 #include <asio/signal_set.hpp>
 #include <asio/use_future.hpp>
 #include <chrono>
@@ -15,6 +15,8 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+#include "rdmapp/completion_token.h"
+#include "rdmapp/cq_poller.h"
 #include "rdmapp/qp.h"
 #include <rdmapp/log.h>
 #include <rdmapp/mr.h>
@@ -124,7 +126,7 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
   auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
+  auto cq_poller = std::make_unique<rdmapp::native_cq_poller>(cq);
 
   switch (argc) {
   case 2: {

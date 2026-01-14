@@ -146,6 +146,24 @@ class basic_qp : public noncopyable,
   void destroy();
 
 public:
+  struct operation_state {
+    operation_state();
+    operation_state(enum ibv_wr_opcode opcode);
+    bool is_send;
+    enum ibv_wr_opcode wr_opcode;
+
+    std::coroutine_handle<> coro_handle{};
+
+    enum ibv_wc_status wc_status {};
+    unsigned int wc_flags{};
+    uint32_t imm_data{};
+    uint32_t byte_len{};
+
+    void set_from_wc(ibv_wc const &wc) noexcept;
+    uintptr_t wr_id() const noexcept;
+    void resume() const;
+  };
+
   /// The result type for send-like operations, typically representing the
   /// number of bytes transferred.
   using send_result = uint32_t;
@@ -180,15 +198,13 @@ public:
         uint64_t swap_;
       };
       uint32_t imm_;
-      /* for rdma_write, wc.byte_len is undefined*/
-      /* hence we store the write bytes here as return*/
-      uint32_t write_byte_len_;
     };
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
-    struct ibv_wc wc_;
-    const enum ibv_wr_opcode opcode_;
+    /* for rdma_write, wc.byte_len is undefined*/
+    /* hence we store the write bytes here as return*/
+    operation_state state_;
 
   public:
     send_awaitable(std::weak_ptr<basic_qp> qp, mr_view local_mr,
@@ -218,7 +234,7 @@ public:
                    uint64_t compare, uint64_t swap); // cas
 
     // Internal methods for integration with different asynchronous models.
-    bool suspend(executor_t::callback_ptr callback) noexcept;
+    bool suspend(uintptr_t wr_id) noexcept;
     send_result resume() const;
 
     // C++20 Coroutine Awaitable Interface
@@ -273,8 +289,7 @@ public:
     std::unique_ptr<local_mr> local_mr_;
     mr_view local_mr_view_;
     std::exception_ptr exception_;
-    struct ibv_wc wc_;
-    enum ibv_wr_opcode opcode [[maybe_unused]];
+    operation_state state_;
 
   public:
     recv_awaitable(recv_awaitable &&) = default;
@@ -283,7 +298,7 @@ public:
     recv_awaitable(std::shared_ptr<basic_qp> qp, std::span<std::byte> buffer);
 
     // Internal methods for integration with different asynchronous models.
-    bool suspend(executor_t::callback_ptr fn) noexcept;
+    bool suspend(uintptr_t wr_id) noexcept;
     recv_result resume() const;
 
     // C++20 Coroutine Awaitable Interface

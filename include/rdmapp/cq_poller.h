@@ -44,4 +44,7 @@ public:
 
 using cq_poller = basic_cq_poller<executor_t::ThisThread, use_asio_awaitable_t>;
 
+using native_cq_poller =
+    basic_cq_poller<executor_t::ThisThread, use_native_awaitable_t>;
+
 } // namespace rdmapp

@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "rdmapp/completion_token.h"
+#include "rdmapp/qp.h"
 
 #include "rdmapp/detail/logger.h"
 
@@ -20,7 +21,10 @@ void execute_callback(struct ibv_wc const &wc) noexcept;
 template <>
 void execute_callback<use_native_awaitable_t>(
     struct ibv_wc const &wc) noexcept {
-  (void)wc;
+  basic_qp::operation_state *state =
+      reinterpret_cast<basic_qp::operation_state *>(wc.wr_id);
+  state->set_from_wc(wc);
+  state->resume();
 }
 
 template <>

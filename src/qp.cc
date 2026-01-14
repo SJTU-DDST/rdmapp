@@ -223,7 +223,7 @@ basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          enum ibv_wr_opcode opcode)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
-      local_mr_view_(*local_mr_), remote_mr_view_(), wc_(), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_view_(), state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer,
@@ -231,7 +231,7 @@ basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          mr_view remote_mr)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
-      local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), opcode_(opcode) {}
+      local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer,
@@ -240,7 +240,7 @@ basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
+      state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer,
@@ -249,7 +249,7 @@ basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr), compare_add_(add),
-      opcode_(opcode) {}
+      state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer,
@@ -259,34 +259,33 @@ basic_qp::send_awaitable::send_awaitable(std::shared_ptr<basic_qp> qp,
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size_bytes()))),
       local_mr_view_(*local_mr_), remote_mr_view_(remote_mr),
-      compare_add_(compare), swap_(swap), opcode_(opcode) {}
+      compare_add_(compare), swap_(swap), state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr,
                                          enum ibv_wr_opcode opcode)
-    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(), wc_(),
-      opcode_(opcode) {}
+    : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(), state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr,
                                          enum ibv_wr_opcode opcode,
                                          mr_view remote_mr)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      opcode_(opcode) {}
+      state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr,
                                          enum ibv_wr_opcode opcode,
                                          mr_view remote_mr, uint32_t imm)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr), imm_(imm),
-      opcode_(opcode) {}
+      state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr,
                                          enum ibv_wr_opcode opcode,
                                          mr_view remote_mr, uint64_t add)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      compare_add_(add), opcode_(opcode) {}
+      compare_add_(add), state_(opcode) {}
 
 basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr,
@@ -295,7 +294,7 @@ basic_qp::send_awaitable::send_awaitable(std::weak_ptr<basic_qp> qp,
 
                                          uint64_t compare, uint64_t swap)
     : qp_(qp), local_mr_view_(local_mr), remote_mr_view_(remote_mr),
-      compare_add_(compare), swap_(swap), opcode_(opcode) {}
+      compare_add_(compare), swap_(swap), state_(opcode) {}
 
 static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
   struct ibv_sge sge = {};
@@ -307,26 +306,56 @@ static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
 
 bool basic_qp::send_awaitable::await_ready() const noexcept { return false; }
 
-bool basic_qp::send_awaitable::await_suspend(
-    std::coroutine_handle<> h) noexcept {
-  auto callback =
-      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
-        wc_ = wc;
-        h.resume();
-      });
-  return this->suspend(callback);
+basic_qp::operation_state::operation_state() : is_send(false) {}
+
+basic_qp::operation_state::operation_state(enum ibv_wr_opcode opcode)
+    : is_send(true), wr_opcode(opcode) {}
+
+uintptr_t basic_qp::operation_state::wr_id() const noexcept {
+  return reinterpret_cast<uintptr_t>(this);
 }
 
-bool basic_qp::send_awaitable::suspend(
-    executor_t::callback_ptr callback) noexcept {
+void basic_qp::operation_state::set_from_wc(ibv_wc const &wc) noexcept {
+  wc_status = wc.status;
+  wc_flags = wc.wc_flags;
+
+  if (!is_send) {
+    byte_len = wc.byte_len;
+    imm_data = wc.imm_data;
+    return;
+  }
+
+  switch (wr_opcode) {
+  case IBV_WR_RDMA_WRITE_WITH_IMM:
+  case IBV_WR_RDMA_WRITE:
+  case IBV_WR_SEND:
+    break;
+  default:
+    byte_len = wc.byte_len;
+  }
+}
+
+void basic_qp::operation_state::resume() const {
+  assert(coro_handle);
+  coro_handle.resume();
+}
+
+bool basic_qp::send_awaitable::await_suspend(
+    std::coroutine_handle<> h) noexcept {
+  state_.coro_handle = h;
+  uintptr_t const wr_id = state_.wr_id();
+  return this->suspend(wr_id);
+}
+
+bool basic_qp::send_awaitable::suspend(uintptr_t wr_id) noexcept {
   auto send_sge = fill_local_sge(local_mr_view_);
 
   struct ibv_send_wr send_wr = {};
   struct ibv_send_wr *bad_send_wr = nullptr;
-  send_wr.opcode = opcode_;
+  send_wr.opcode = state_.wr_opcode;
   send_wr.next = nullptr;
   send_wr.num_sge = 1;
-  send_wr.wr_id = reinterpret_cast<uint64_t>(callback);
+  send_wr.wr_id = reinterpret_cast<uint64_t>(wr_id);
   send_wr.send_flags = IBV_SEND_SIGNALED;
   send_wr.sg_list = &send_sge;
   if (is_rdma()) {
@@ -334,18 +363,17 @@ bool basic_qp::send_awaitable::suspend(
     send_wr.wr.rdma.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.rdma.rkey = remote_mr_view_.rkey();
-    if (opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM) {
+    if (state_.wr_opcode == IBV_WR_RDMA_WRITE_WITH_IMM) {
       send_wr.imm_data = imm_;
-    } else if (opcode_ == IBV_WR_RDMA_WRITE) {
-      write_byte_len_ = local_mr_view_.length();
     }
+    state_.byte_len = local_mr_view_.length();
   } else if (is_atomic()) {
     assert(remote_mr_view_.addr() != nullptr);
     send_wr.wr.atomic.remote_addr =
         reinterpret_cast<uint64_t>(remote_mr_view_.addr());
     send_wr.wr.atomic.rkey = remote_mr_view_.rkey();
     send_wr.wr.atomic.compare_add = compare_add_;
-    if (opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP) {
+    if (state_.wr_opcode == IBV_WR_ATOMIC_CMP_AND_SWP) {
       send_wr.wr.atomic.swap = swap_;
     }
   }
@@ -355,32 +383,29 @@ bool basic_qp::send_awaitable::suspend(
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_send: qp expired, use_count=0"));
-      log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_send(send_wr, bad_send_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
-    // NOTE: in that case, cq will not have this event
-    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
 }
 
 constexpr bool basic_qp::send_awaitable::is_rdma() const {
-  return opcode_ == IBV_WR_RDMA_READ || opcode_ == IBV_WR_RDMA_WRITE ||
-         opcode_ == IBV_WR_RDMA_WRITE_WITH_IMM;
+  return state_.wr_opcode == IBV_WR_RDMA_READ ||
+         state_.wr_opcode == IBV_WR_RDMA_WRITE ||
+         state_.wr_opcode == IBV_WR_RDMA_WRITE_WITH_IMM;
 }
 
 constexpr bool basic_qp::send_awaitable::is_atomic() const {
-  return opcode_ == IBV_WR_ATOMIC_CMP_AND_SWP ||
-         opcode_ == IBV_WR_ATOMIC_FETCH_AND_ADD;
+  return state_.wr_opcode == IBV_WR_ATOMIC_CMP_AND_SWP ||
+         state_.wr_opcode == IBV_WR_ATOMIC_FETCH_AND_ADD;
 }
 
 basic_qp::send_result basic_qp::send_awaitable::resume() const {
-  check_wc_status(wc_.status, "failed to send");
+  check_wc_status(state_.wc_status, "failed to send");
   /* ref: https://www.rdmamojo.com/2013/02/15/ibv_poll_cq/
    * byte_len: The number of bytes transferred. Relevant if the Receive Queue
    * for incoming Send or RDMA Write with immediate operations. This value
@@ -388,7 +413,7 @@ basic_qp::send_result basic_qp::send_awaitable::resume() const {
    * in the Send Queue for RDMA Read and Atomic operations.
    * */
   /* this field is undefined for rdma write*/
-  return opcode_ == IBV_WR_RDMA_WRITE ? write_byte_len_ : wc_.byte_len;
+  return state_.byte_len;
 }
 
 uint32_t basic_qp::send_awaitable::await_resume() const {
@@ -448,11 +473,14 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
         auto callback = executor_t::make_callback(
             [awaitable = awaitable_ptr,
              self = self_ptr](struct ibv_wc const &wc) mutable noexcept {
-              awaitable->wc_ = wc;
+              awaitable->state_.set_from_wc(wc);
               complete(self, awaitable);
             });
 
-        awaitable_ptr->suspend(callback);
+        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
+          log::error("send_awaitable: fail to suspend, destroy callback");
+          executor_t::destroy_callback(callback);
+        }
         log::trace("send_awaitable: suspended: callback={}",
                    fmt::ptr(callback));
       },
@@ -503,7 +531,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
             [self = self_ptr, awaitable = awaitable_ptr,
              complete_called](struct ibv_wc const &wc) mutable noexcept {
               if (!complete_called->test_and_set(std::memory_order_relaxed)) {
-                awaitable->wc_ = wc;
+                awaitable->state_.set_from_wc(wc);
                 complete(self, awaitable);
               } else {
                 log::debug("recv_awaitable({}): resumed by cancellation",
@@ -511,7 +539,10 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
               }
             });
 
-        awaitable_ptr->suspend(callback);
+        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
+          log::error("recv_awaitable: suspend error, destroy callback");
+          executor_t::destroy_callback(callback);
+        }
         log::trace("recv_awaitable({}): suspended: callback={}",
                    fmt::ptr(awaitable_ptr.get()), fmt::ptr(callback));
       },
@@ -522,16 +553,15 @@ basic_qp::recv_awaitable::recv_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer)
     : qp_(qp), local_mr_(std::make_unique<local_mr>(
                    qp->pd_->reg_mr(buffer.data(), buffer.size()))),
-      local_mr_view_(*local_mr_), wc_() {}
+      local_mr_view_(*local_mr_), state_() {}
 
 basic_qp::recv_awaitable::recv_awaitable(std::weak_ptr<basic_qp> qp,
                                          mr_view local_mr)
-    : qp_(qp), local_mr_view_(local_mr), wc_() {}
+    : qp_(qp), local_mr_view_(local_mr), state_() {}
 
 bool basic_qp::recv_awaitable::await_ready() const noexcept { return false; }
 
-bool basic_qp::recv_awaitable::suspend(
-    executor_t::callback_ptr callback) noexcept {
+bool basic_qp::recv_awaitable::suspend(uintptr_t wr_id) noexcept {
   ibv_sge recv_sge, *recv_sge_list{nullptr};
   int num_sge{0};
   if (local_mr_view_) {
@@ -543,7 +573,7 @@ bool basic_qp::recv_awaitable::suspend(
   struct ibv_recv_wr recv_wr = {};
   struct ibv_recv_wr *bad_recv_wr = nullptr;
   recv_wr.next = nullptr;
-  recv_wr.wr_id = reinterpret_cast<uint64_t>(callback);
+  recv_wr.wr_id = wr_id;
   recv_wr.num_sge = num_sge;
   recv_wr.sg_list = recv_sge_list;
 
@@ -552,15 +582,11 @@ bool basic_qp::recv_awaitable::suspend(
     if (!qp) [[unlikely]] {
       exception_ = std::make_exception_ptr(
           std::runtime_error("post_recv: qp expired, use_count=0"));
-      log::debug("destroy callback on error: {}", fmt::ptr(callback));
-      executor_t::destroy_callback(callback);
       return false;
     }
     qp->post_recv(recv_wr, bad_recv_wr);
   } catch (std::runtime_error &e) {
     exception_ = std::make_exception_ptr(e);
-    log::debug("destroy callback on error: {}", fmt::ptr(callback));
-    executor_t::destroy_callback(callback);
     return false;
   }
   return true;
@@ -568,21 +594,19 @@ bool basic_qp::recv_awaitable::suspend(
 
 bool basic_qp::recv_awaitable::await_suspend(
     std::coroutine_handle<> h) noexcept {
-  auto callback =
-      executor_t::make_callback([h, this](struct ibv_wc const &wc) noexcept {
-        wc_ = wc;
-        h.resume();
-      });
-  return this->suspend(callback);
+  state_.coro_handle = h;
+  uintptr_t const wr_id = state_.wr_id();
+  return this->suspend(wr_id);
 }
 
 basic_qp::recv_result basic_qp::recv_awaitable::resume() const {
-  check_wc_status(wc_.status, "failed to recv");
-  if (wc_.wc_flags & IBV_WC_WITH_IMM) {
-    log::trace("recv resume: imm: wr_id={:#x} imm={}", wc_.wr_id, wc_.imm_data);
-    return std::make_pair(wc_.byte_len, wc_.imm_data);
+  check_wc_status(state_.wc_status, "failed to recv");
+  if (state_.wc_flags & IBV_WC_WITH_IMM) {
+    log::trace("recv resume: imm: wr_id={:#x} imm={}", state_.wr_id(),
+               state_.imm_data);
+    return std::make_pair(state_.byte_len, state_.imm_data);
   }
-  return std::make_pair(wc_.byte_len, std::nullopt);
+  return std::make_pair(state_.byte_len, std::nullopt);
 }
 
 basic_qp::recv_result basic_qp::recv_awaitable::await_resume() const {
