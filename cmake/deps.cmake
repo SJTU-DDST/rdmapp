@@ -21,6 +21,16 @@ fetchcontent_declare(
   GIT_SHALLOW 1
 )
 
+if(RDMAPP_BUILD_EXAMPLES)
+  fetchcontent_declare(
+    cppcoro
+    GIT_REPOSITORY https://github.com/andreasbuhr/cppcoro.git
+    GIT_TAG main
+    GIT_SHALLOW 1
+  )
+  fetchcontent_makeavailable(cppcoro)
+endif()
+
 fetchcontent_makeavailable(
   asio
   spdlog

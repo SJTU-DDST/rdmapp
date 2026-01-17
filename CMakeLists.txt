@@ -191,7 +191,7 @@ if(RDMAPP_BUILD_EXAMPLES)
 
   foreach(EXAMPLE IN LISTS RDMAPP_EXAMPLES)
     add_executable(${EXAMPLE} examples/${EXAMPLE}.cc)
-    target_link_libraries(${EXAMPLE} rdmapp_examples)
+    target_link_libraries(${EXAMPLE} rdmapp_examples cppcoro)
     target_compile_options(${EXAMPLE} ${RDMAPP_COMPILE_OPTIONS})
   endforeach()
 
