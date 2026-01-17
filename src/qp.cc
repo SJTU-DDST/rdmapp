@@ -80,15 +80,14 @@ std::vector<std::byte> basic_qp::serialize() const {
 }
 
 void basic_qp::create() {
-  struct ibv_qp_init_attr qp_init_attr = {};
-  ::bzero(&qp_init_attr, sizeof(qp_init_attr));
+  struct ibv_qp_init_attr qp_init_attr{};
   qp_init_attr.qp_type = IBV_QPT_RC;
   qp_init_attr.recv_cq = recv_cq_->cq_;
   qp_init_attr.send_cq = send_cq_->cq_;
   qp_init_attr.cap.max_recv_sge = 1;
   qp_init_attr.cap.max_send_sge = 1;
-  qp_init_attr.cap.max_recv_wr = 128;
-  qp_init_attr.cap.max_send_wr = 128;
+  qp_init_attr.cap.max_recv_wr = 256;
+  qp_init_attr.cap.max_send_wr = 256;
   qp_init_attr.sq_sig_all = 0;
   qp_init_attr.qp_context = this;
 

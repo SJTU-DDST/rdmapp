@@ -187,11 +187,11 @@ if(RDMAPP_BUILD_EXAMPLES)
   target_include_directories(rdmapp_examples PUBLIC examples/include)
   target_link_libraries(rdmapp_examples PUBLIC rdmapp spdlog::spdlog)
   target_link_options(rdmapp_examples ${RDMAPP_LINK_OPTIONS})
-  set(RDMAPP_EXAMPLES helloworld write_bw rpc cancellation latency latency_raw)
+  set(RDMAPP_EXAMPLES helloworld write_bw rpc cancellation latency latency_raw async_rpc)
 
   foreach(EXAMPLE IN LISTS RDMAPP_EXAMPLES)
     add_executable(${EXAMPLE} examples/${EXAMPLE}.cc)
-    target_link_libraries(${EXAMPLE} rdmapp_examples)
+    target_link_libraries(${EXAMPLE} rdmapp_examples cppcoro)
     target_compile_options(${EXAMPLE} ${RDMAPP_COMPILE_OPTIONS})
   endforeach()
 

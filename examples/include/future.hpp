@@ -89,6 +89,9 @@ public:
 
   auto get() {
     wait();
+    if (state->exception) {
+      std::rethrow_exception(state->exception);
+    }
     if constexpr (std::same_as<T, void>) {
       return;
     } else {
