@@ -33,6 +33,57 @@ struct RpcSlot {
   size_t actual_len = 0;
 };
 
+// A simple RAII guard for std::atomic<bool>.
+// Ensures the atomic is set to 'false' when the guard goes out of scope.
+class AtomicGuard {
+public:
+  // Acquires the resource (points to the atomic).
+  explicit AtomicGuard(std::atomic<bool> &flag) : flag_ptr_(&flag) {}
+
+  // Destructor: Releases the resource.
+  // This is the core of the RAII pattern.
+  ~AtomicGuard() {
+    if (flag_ptr_) {
+      // Use 'release' memory order to synchronize with the 'acquire'
+      // operation in the compare_exchange_weak loop. This ensures that
+      // all memory operations before this point are visible to the next
+      // thread that acquires the slot.
+      flag_ptr_->store(false);
+    }
+  }
+
+  // --- Rule of Five: Manage resource ownership correctly ---
+
+  // 1. Delete copy constructor: Guards are unique owners; copying is a bug.
+  AtomicGuard(const AtomicGuard &) = delete;
+
+  // 2. Delete copy assignment:
+  AtomicGuard &operator=(const AtomicGuard &) = delete;
+
+  // 3. Move constructor: Transfer ownership from a temporary object.
+  AtomicGuard(AtomicGuard &&other) noexcept : flag_ptr_(other.flag_ptr_) {
+    // The old guard no longer owns the atomic flag.
+    other.flag_ptr_ = nullptr;
+  }
+
+  // 4. Move assignment:
+  AtomicGuard &operator=(AtomicGuard &&other) noexcept {
+    if (this != &other) {
+      // Release our current resource, if we own one.
+      if (flag_ptr_) {
+        flag_ptr_->store(false);
+      }
+      // Steal the resource from the other guard.
+      flag_ptr_ = other.flag_ptr_;
+      other.flag_ptr_ = nullptr;
+    }
+    return *this;
+  }
+
+private:
+  std::atomic<bool> *flag_ptr_;
+};
+
 // 等待对象：挂起发送协程，直到接收 Worker 唤醒
 struct RpcResponseAwaitable {
   RpcSlot &slot;
@@ -40,10 +91,10 @@ struct RpcResponseAwaitable {
   bool await_suspend(std::coroutine_handle<> h) noexcept {
     // 1. 尝试把自己的 handle 存进去
     // 使用 exchange 确保此时如果有人想 resume，他必须拿到这个 handle
-    slot.waiter.store(h, std::memory_order_release);
+    slot.waiter.store(h);
 
     // 2. 检查接收线程是否已经先于我完成了工作
-    if (slot.done.load(std::memory_order_acquire)) {
+    if (slot.done.load()) {
       // 3. 尝试把 handle 拿回来自己负责恢复（返回 false 即可）
       auto expected = h;
       if (slot.waiter.compare_exchange_strong(expected, nullptr)) {
@@ -118,6 +169,7 @@ public:
         spdlog::warn("fucking spinning: cnt={}", spin_cnt);
       }
     }
+    AtomicGuard guard(slot.in_use);
 
     // 初始化 Slot
     slot.done.store(false);
@@ -143,7 +195,6 @@ public:
       co_await qp_->send(send_slice_mr, rdmapp::use_native_awaitable);
     } catch (const std::exception &e) {
       spdlog::error("client: send failed: {}", e.what());
-      slot.in_use.store(false);
       std::terminate();
       co_return 0;
     }
@@ -151,8 +202,6 @@ public:
     // 等待响应
     size_t nbytes = co_await RpcResponseAwaitable{slot};
 
-    // 释放 Slot
-    slot.in_use.store(false);
     co_return nbytes;
   }
 
