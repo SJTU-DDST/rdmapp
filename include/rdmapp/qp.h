@@ -74,6 +74,7 @@ struct deserialized_qp {
   std::vector<std::byte> user_data;
 };
 
+namespace detail {
 /**
  * @brief A type alias to select the return type of an awaitable operation based
  * on a completion token.
@@ -88,7 +89,6 @@ using awaitable_return_t = std::conditional_t<
     std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
     asio::awaitable<Result>, Awaitable>;
 
-namespace detail {
 /**
  * @brief A helper function to cast away the constness from a `std::span`.
  * @note This is potentially unsafe and should only be used when an underlying
@@ -146,13 +146,20 @@ class basic_qp : public noncopyable,
 
 public:
   struct operation_state {
-    operation_state();
-    operation_state(enum ibv_wr_opcode opcode);
-    bool is_send;
-    enum ibv_wr_opcode wr_opcode;
-
+    operation_state() noexcept;
+    operation_state(enum ibv_wr_opcode opcode) noexcept;
+#ifdef RDMAPP_BUILD_DEBUG
+    static constexpr uint32_t kMagic1 = 0x190514;
+    static constexpr uint32_t kMagic2 = 0xABCABC;
+    uint32_t magic1{kMagic1};
+    uint32_t magic2{kMagic2};
+    void validate() const noexcept {
+      assert(magic1 == kMagic1);
+      assert(magic2 == kMagic2);
+    }
+#endif
+    std::optional<enum ibv_wr_opcode> const wr_opcode;
     std::coroutine_handle<> coro_handle{};
-
     enum ibv_wc_status wc_status {};
     unsigned int wc_flags{};
     uint32_t imm_data{};
@@ -268,7 +275,8 @@ public:
   requires ValidCompletionToken<CompletionToken>
   static auto make_send_awaitable(CompletionToken token [[maybe_unused]],
                                   Args &&...args) noexcept
-      -> awaitable_return_t<CompletionToken, send_awaitable, send_result> {
+      -> detail::awaitable_return_t<CompletionToken, send_awaitable,
+                                    send_result> {
     return send_awaitable{std::forward<Args>(args)...};
   };
 
@@ -327,7 +335,8 @@ public:
   requires ValidCompletionToken<CompletionToken>
   static auto make_recv_awaitable(CompletionToken token [[maybe_unused]],
                                   Args &&...args) noexcept
-      -> awaitable_return_t<CompletionToken, recv_awaitable, recv_result> {
+      -> detail::awaitable_return_t<CompletionToken, recv_awaitable,
+                                    recv_result> {
     return recv_awaitable{std::forward<Args>(args)...};
   };
 

@@ -305,26 +305,31 @@ static inline struct ibv_sge fill_local_sge(mr_view const &mr) {
 
 bool basic_qp::send_awaitable::await_ready() const noexcept { return false; }
 
-basic_qp::operation_state::operation_state() : is_send(false) {}
+basic_qp::operation_state::operation_state() noexcept
+    : wr_opcode(std::nullopt) {}
 
-basic_qp::operation_state::operation_state(enum ibv_wr_opcode opcode)
-    : is_send(true), wr_opcode(opcode) {}
+basic_qp::operation_state::operation_state(enum ibv_wr_opcode opcode) noexcept
+    : wr_opcode(opcode) {}
 
 uintptr_t basic_qp::operation_state::wr_id() const noexcept {
   return reinterpret_cast<uintptr_t>(this);
 }
 
 void basic_qp::operation_state::set_from_wc(ibv_wc const &wc) noexcept {
+#ifdef RDMAPP_BUILD_DEBUG
+  validate();
+#endif
+
   wc_status = wc.status;
   wc_flags = wc.wc_flags;
 
-  if (!is_send) {
+  if (!wr_opcode) { // it is recv, no need to check wr_opcode
     byte_len = wc.byte_len;
     imm_data = wc.imm_data;
     return;
   }
 
-  switch (wr_opcode) {
+  switch (*wr_opcode) {
   case IBV_WR_RDMA_WRITE_WITH_IMM:
   case IBV_WR_RDMA_WRITE:
   case IBV_WR_SEND:
@@ -335,7 +340,9 @@ void basic_qp::operation_state::set_from_wc(ibv_wc const &wc) noexcept {
 }
 
 void basic_qp::operation_state::resume() const {
-  assert(coro_handle);
+#ifdef RDMAPP_BUILD_DEBUG
+  validate();
+#endif
   coro_handle.resume();
 }
 
@@ -351,7 +358,8 @@ bool basic_qp::send_awaitable::suspend(uintptr_t wr_id) noexcept {
 
   struct ibv_send_wr send_wr = {};
   struct ibv_send_wr *bad_send_wr = nullptr;
-  send_wr.opcode = state_.wr_opcode;
+  assert(state_.wr_opcode);
+  send_wr.opcode = *state_.wr_opcode;
   send_wr.next = nullptr;
   send_wr.num_sge = 1;
   send_wr.wr_id = reinterpret_cast<uint64_t>(wr_id);

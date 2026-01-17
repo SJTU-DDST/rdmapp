@@ -317,7 +317,8 @@ private:
           co_await qp_->recv(recv_view, rdmapp::use_native_awaitable);
 
       if (nbytes < sizeof(RpcHeader)) {
-        spdlog::warn("server: recv too small packet");
+        spdlog::warn("server: recv too small packet: size={} expected={}",
+                     nbytes, sizeof(RpcHeader));
         continue; // 重新投递 Recv
       }
 
