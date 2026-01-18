@@ -1,9 +1,9 @@
 #pragma once
 
-#include <concepts>
 #include <functional>
-#include <memory>
+#include <new>
 #include <span>
+#include <stdexcept>
 #include <utility>
 
 #include <infiniband/verbs.h>
@@ -33,71 +33,48 @@ using callback_ptr = callback_fn *;
  * @return callback_ptr The callback function pointer.
  */
 template <class T> static callback_ptr make_callback(T &&cb) {
-  auto ptr = new callback_fn(std::forward<T>(cb));
+  auto ptr = new (std::nothrow) callback_fn(std::forward<T>(cb));
 #ifdef RDMAPP_BUILD_DEBUG
   log::trace("executor: make_callback: {}", fmt::ptr(ptr));
 #endif
+  if (!ptr) [[unlikely]] {
+#ifdef RDMAPP_BUILD_DEBUG
+    log::error("executor: out of memory for callback_ptr");
+#endif
+    throw std::runtime_error("executor: out of memory for callback");
+  }
   return ptr;
 }
-
-void execute_callback_fn(struct ibv_wc const &wc) noexcept;
 
 /**
  * @brief Destroy a callback function.
  *
  * @param cb The callback function pointer.
  */
-void destroy_callback(callback_ptr cb);
-
-struct ThisThread {};
-struct WorkerThread {};
+void destroy_callback(callback_ptr cb) noexcept;
 
 } // namespace executor_t
 
-template <typename T>
-concept ExecutionThread = std::same_as<T, executor_t::ThisThread> ||
-                          std::same_as<T, executor_t::WorkerThread>;
-
-namespace detail {
-struct executor_impl;
-};
-
-template <ExecutionThread Thread> class basic_executor {
-  std::unique_ptr<detail::executor_impl> impl_;
+class basic_executor {
 
 public:
   /**
-   * @brief Construct a new executor object with worker thread number
-   */
-
-  basic_executor(int nr_workers = 2)
-  requires std::same_as<Thread, executor_t::WorkerThread>;
-
-  /**
    * @brief Construct a new executor object
    */
-  basic_executor()
-  requires std::same_as<Thread, executor_t::ThisThread>;
+  basic_executor() noexcept;
 
   /**
    * @brief Process a completion entry.
    *
    * @param wc The completion entry to process.
    */
-
   template <typename CompletionToken>
   requires ValidCompletionToken<CompletionToken>
-  void process_wc(std::span<struct ibv_wc> const wc) noexcept;
+  static void process_wc(std::span<struct ibv_wc> const wc) noexcept;
 
-  /**
-   * @brief Shutdown the executor.
-   *
-   */
-  void shutdown();
-
-  ~basic_executor();
+  ~basic_executor() noexcept;
 };
 
-using executor = basic_executor<executor_t::ThisThread>;
+using executor = basic_executor;
 
 } // namespace rdmapp

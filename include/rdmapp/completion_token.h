@@ -20,6 +20,10 @@ inline constexpr auto use_native_awaitable = use_native_awaitable_t{};
 /// @brief The default completion token used by asynchronous QP operations.
 inline constexpr auto default_completion_token = use_asio_awaitable;
 
+/// @brief The default completion token type used by asynchronous QP operations.
+using default_completion_token_t =
+    std::remove_cvref_t<decltype(default_completion_token)>;
+
 /**
  * @brief Concept to validate that a type is a valid completion token.
  */

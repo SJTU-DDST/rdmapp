@@ -6,7 +6,6 @@
 #include <asio/signal_set.hpp>
 #include <asio/use_future.hpp>
 #include <cstdint>
-#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <spdlog/spdlog.h>

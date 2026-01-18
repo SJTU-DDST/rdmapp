@@ -163,7 +163,7 @@ message(STATUS "[rdmapp/link] options: ${RDMAPP_LINK_OPTIONS}")
 target_compile_options(rdmapp ${RDMAPP_COMPILE_OPTIONS})
 target_link_libraries(rdmapp
   PUBLIC ibverbs Threads::Threads asio
-  PRIVATE spdlog::spdlog_header_only concurrentqueue
+  PRIVATE spdlog::spdlog_header_only
 )
 target_include_directories(rdmapp PUBLIC include)
 

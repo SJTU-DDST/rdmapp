@@ -15,21 +15,20 @@
 
 namespace rdmapp {
 
-template <ExecutionThread Thread, typename CompletionToken>
+template <typename CompletionToken>
 requires ValidCompletionToken<CompletionToken>
-basic_cq_poller<Thread, CompletionToken>::basic_cq_poller(
-    std::shared_ptr<cq> cq, std::shared_ptr<basic_executor<Thread>> executor,
-    size_t batch_size)
-    : wc_vec_(batch_size), cq_(std::move(cq)), executor_(std::move(executor)),
+basic_cq_poller<CompletionToken>::basic_cq_poller(std::shared_ptr<cq> cq,
+                                                  size_t batch_size)
+    : wc_vec_(batch_size), cq_(std::move(cq)),
       poller_thread_(&basic_cq_poller::worker, this) {}
 
-template <ExecutionThread Thread, typename CompletionToken>
+template <typename CompletionToken>
 requires ValidCompletionToken<CompletionToken>
-basic_cq_poller<Thread, CompletionToken>::~basic_cq_poller() {}
+basic_cq_poller<CompletionToken>::~basic_cq_poller() {}
 
-template <ExecutionThread Thread, typename CompletionToken>
+template <typename CompletionToken>
 requires ValidCompletionToken<CompletionToken>
-void basic_cq_poller<Thread, CompletionToken>::worker(std::stop_token token) {
+void basic_cq_poller<CompletionToken>::worker(std::stop_token token) {
   log::debug("cq_poller[thread={}]: polling cqe", std::this_thread::get_id());
   while (!token.stop_requested()) {
     try {
@@ -37,7 +36,7 @@ void basic_cq_poller<Thread, CompletionToken>::worker(std::stop_token token) {
       if (!nr_wc)
         continue;
       log::trace("polled cqe: nr_wc={} ", nr_wc);
-      executor_->template process_wc<CompletionToken>({wc_vec_.begin(), nr_wc});
+      basic_executor::process_wc<CompletionToken>({wc_vec_.begin(), nr_wc});
     } catch (std::runtime_error &e) {
       log::error("cq_poller[thread={}: exception: {}",
                  std::this_thread::get_id(), e.what());
@@ -48,10 +47,7 @@ void basic_cq_poller<Thread, CompletionToken>::worker(std::stop_token token) {
              std::this_thread::get_id());
 }
 
-template class basic_cq_poller<executor_t::ThisThread, use_asio_awaitable_t>;
-template class basic_cq_poller<executor_t::ThisThread, use_native_awaitable_t>;
-template class basic_cq_poller<executor_t::WorkerThread, use_asio_awaitable_t>;
-template class basic_cq_poller<executor_t::WorkerThread,
-                               use_native_awaitable_t>;
+template class basic_cq_poller<use_asio_awaitable_t>;
+template class basic_cq_poller<use_native_awaitable_t>;
 
 } // namespace rdmapp

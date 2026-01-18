@@ -15,7 +15,6 @@
 #include <asio/signal_set.hpp>
 #include <asio/use_future.hpp>
 #include <cstdint>
-#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <memory>

@@ -14,12 +14,6 @@ fetchcontent_declare(
   GIT_SHALLOW 1
 )
 
-fetchcontent_declare(
-  concurrentqueue
-  GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
-  GIT_TAG master
-  GIT_SHALLOW 1
-)
 
 if(RDMAPP_BUILD_EXAMPLES)
   fetchcontent_declare(
@@ -28,13 +22,18 @@ if(RDMAPP_BUILD_EXAMPLES)
     GIT_TAG main
     GIT_SHALLOW 1
   )
-  fetchcontent_makeavailable(cppcoro)
+  fetchcontent_declare(
+    concurrentqueue
+    GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
+    GIT_TAG master
+    GIT_SHALLOW 1
+  )
+  fetchcontent_makeavailable(cppcoro concurrentqueue)
 endif()
 
 fetchcontent_makeavailable(
   asio
   spdlog
-  concurrentqueue
 )
 
 add_library(asio INTERFACE)

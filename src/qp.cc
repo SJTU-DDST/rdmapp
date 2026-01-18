@@ -5,7 +5,6 @@
 #include <asio/cancellation_signal.hpp>
 #include <asio/cancellation_type.hpp>
 #include <asio/compose.hpp>
-#include <asio/dispatch.hpp>
 #include <asio/use_awaitable.hpp>
 #include <atomic>
 #include <cassert>
@@ -80,7 +79,7 @@ std::vector<std::byte> basic_qp::serialize() const {
 }
 
 void basic_qp::create() {
-  struct ibv_qp_init_attr qp_init_attr{};
+  struct ibv_qp_init_attr qp_init_attr {};
   qp_init_attr.qp_type = IBV_QPT_RC;
   qp_init_attr.recv_cq = recv_cq_->cq_;
   qp_init_attr.send_cq = send_cq_->cq_;
@@ -638,7 +637,7 @@ void basic_qp::destroy() {
 }
 
 void basic_qp::err() {
-  struct ibv_qp_attr attr{};
+  struct ibv_qp_attr attr {};
   attr.qp_state = IBV_QPS_ERR;
 
   if (ibv_modify_qp(qp_, &attr, IBV_QP_STATE)) {

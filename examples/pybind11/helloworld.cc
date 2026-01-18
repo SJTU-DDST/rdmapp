@@ -55,7 +55,6 @@ private:
   std::shared_ptr<rdmapp::pd> pd_;
   std::shared_ptr<rdmapp::cq> cq_;
   std::shared_ptr<asio::io_context> io_ctx_;
-  std::shared_ptr<rdmapp::executor> executor_;
   std::unique_ptr<rdmapp::cq_poller> cq_poller_;
 };
 
