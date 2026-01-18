@@ -14,13 +14,8 @@
 #include <rdmapp/cq_poller.h>
 #include <rdmapp/log.h>
 
-#ifdef RDMAPP_BUILD_DEBUG
-constexpr int kSendCount = 10000;
-constexpr int kBatchSize = 500;
-#else
-constexpr int kSendCount = 1000 * 100;
+constexpr int kSendCount = 2 * 1000 * 1000;
 constexpr int kBatchSize = 10000;
-#endif
 
 constexpr int kConcurrency = 4;
 

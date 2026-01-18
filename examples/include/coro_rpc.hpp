@@ -25,26 +25,26 @@ struct RpcHeader {
   uint32_t padding;
 };
 
+inline constexpr uintptr_t kRpcStatusCompleted = 0x1;
+
 struct RpcSlot {
-  std::atomic<bool> done{false};
-  std::atomic<std::coroutine_handle<>> waiter{};
-  std::span<std::byte> user_resp_buffer;
+  std::atomic<uintptr_t> waiter{0};
+  std::span<std::byte> user_resp_buffer{};
   size_t actual_len = 0;
   uint64_t expected_req_id = 0; // 关键：存储完整的编码后的 ID
 };
 
 struct RpcResponseAwaitable {
   RpcSlot &slot;
-  bool await_ready() const noexcept { return slot.done.load(); }
+  bool await_ready() const noexcept {
+    return slot.waiter.load() == kRpcStatusCompleted;
+  }
   bool await_suspend(std::coroutine_handle<> h) noexcept {
-    slot.waiter.store(h);
-    if (!slot.done.load())
+    uintptr_t expected = 0;
+    if (slot.waiter.compare_exchange_strong(expected, uintptr_t(h.address()))) {
       return true;
-    std::coroutine_handle<> expected = h;
-    if (slot.waiter.compare_exchange_strong(expected, nullptr)) {
-      return false;
     }
-    return true;
+    return false;
   }
   size_t await_resume() noexcept { return slot.actual_len; }
 };
@@ -106,9 +106,8 @@ public:
     uint64_t req_id = (seq << 32) | static_cast<uint64_t>(slot_idx);
 
     RpcSlot &slot = slots_[slot_idx];
-    slot.done.store(false);
+    slot.waiter.store(0);
     slot.user_resp_buffer = resp_buffer;
-    slot.waiter = nullptr;
     slot.expected_req_id = req_id;
 
     // 3. 准备数据并发送
@@ -166,22 +165,28 @@ private:
 
         RpcSlot &slot = slots_[slot_idx];
 
-        // 校验：ID 必须完全匹配 且 Slot 确实在等待
-        if (!slot.done.load() && slot.expected_req_id == recv_id) {
-          // 拷贝数据
-          size_t payload_len = header->payload_len;
-          size_t copy_len =
-              std::min((size_t)payload_len, slot.user_resp_buffer.size());
-          std::memcpy(slot.user_resp_buffer.data(),
-                      buffer_ptr + sizeof(RpcHeader), copy_len);
+        if (slot.expected_req_id != recv_id) [[unlikely]] {
+          spdlog::error("client: received bad packet: mismatch req_id: "
+                        "expected={} get={}",
+                        slot.expected_req_id, recv_id);
+          std::terminate();
+        }
+        // 拷贝数据
+        size_t payload_len = header->payload_len;
+        size_t copy_len =
+            std::min((size_t)payload_len, slot.user_resp_buffer.size());
+        std::memcpy(slot.user_resp_buffer.data(),
+                    buffer_ptr + sizeof(RpcHeader), copy_len);
 
-          slot.actual_len = copy_len;
-          slot.done.store(true);
+        slot.actual_len = copy_len;
 
-          std::coroutine_handle<> h = slot.waiter.exchange(nullptr);
-          if (h) {
-            h.resume();
-          }
+        uintptr_t prev_waiter = slot.waiter.exchange(kRpcStatusCompleted);
+        if (prev_waiter != 0 && prev_waiter != kRpcStatusCompleted) {
+          auto h = std::coroutine_handle<>::from_address(
+              reinterpret_cast<void *>(prev_waiter));
+          h.resume();
+        } else if (prev_waiter == 0) {
+          // fastpath, no need to suspend for rpc response awaiter
         } else {
           spdlog::warn(
               "client: received late or mismatch packet for req_id: {}",
