@@ -14,6 +14,18 @@
 #include <rdmapp/cq_poller.h>
 #include <rdmapp/log.h>
 
+#ifdef RDMAPP_BUILD_ASAN
+#include <sanitizer/lsan_interface.h>
+
+void signal_handler(int) {
+  spdlog::info("SIGINT: ASAN check begin");
+  // __lsan_do_recoverable_leak_check();
+  __lsan_do_leak_check();
+  spdlog::info("SIGINT: ASAN check done");
+  exit(-1);
+}
+#endif
+
 constexpr int kSendCount = 2 * 1000 * 1000;
 constexpr int kBatchSize = 10000;
 
@@ -150,6 +162,10 @@ void server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef RDMAPP_BUILD_ASAN
+  signal(SIGINT, &signal_handler);
+#endif
+
 #ifdef RDMAPP_BUILD_DEBUG
   rdmapp::log::setup(rdmapp::log::level::debug);
   spdlog::set_level(spdlog::level::debug);

@@ -139,6 +139,7 @@ if(RDMAPP_BUILD_ASAN)
   message(STATUS "[rdmapp] build: build with ASAN")
   list(APPEND RDMAPP_COMPILE_OPTIONS PRIVATE -fno-omit-frame-pointer -fsanitize=address)
   list(APPEND RDMAPP_LINK_OPTIONS PUBLIC -fsanitize=address)
+  target_compile_definitions(rdmapp PUBLIC RDMAPP_BUILD_ASAN)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES Clang)
