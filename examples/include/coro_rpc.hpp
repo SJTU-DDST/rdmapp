@@ -14,9 +14,11 @@
 #include <spdlog/spdlog.h>
 #include <vector>
 
+#include "rdmapp/mr.h"
 #include <rdmapp/qp.h>
 
-inline constexpr size_t kMsgSize = 4096;
+inline constexpr size_t kSendMsgSize = 256;
+inline constexpr size_t kRecvMsgSize = 4096;
 inline constexpr size_t kRecvDepth = 256;
 
 struct RpcHeader {
@@ -24,6 +26,9 @@ struct RpcHeader {
   uint32_t payload_len;
   uint32_t padding;
 };
+
+inline constexpr size_t kSendBufferSize = kSendMsgSize + sizeof(RpcHeader);
+inline constexpr size_t kRecvBufferSize = kRecvMsgSize + sizeof(RpcHeader);
 
 inline constexpr uintptr_t kRpcStatusCompleted = 0x1;
 
@@ -68,10 +73,10 @@ class RpcClient {
 
 public:
   RpcClient(std::shared_ptr<rdmapp::qp> qp)
-      : qp_(qp), send_buffer_pool_(kMaxInflight * kMsgSize),
+      : qp_(qp), send_buffer_pool_(kMaxInflight * kSendBufferSize),
         send_mr_(qp->pd_ptr()->reg_mr(send_buffer_pool_.data(),
                                       send_buffer_pool_.size())),
-        recv_buffer_pool_(kRecvDepth * kMsgSize),
+        recv_buffer_pool_(kRecvDepth * kRecvBufferSize),
         recv_mr_(qp->pd_ptr()->reg_mr(recv_buffer_pool_.data(),
                                       recv_buffer_pool_.size())),
         slots_(kMaxInflight), free_slots_(kMaxInflight * 2),
@@ -111,7 +116,7 @@ public:
     slot.expected_req_id = req_id;
 
     // 3. 准备数据并发送
-    size_t send_offset = slot_idx * kMsgSize;
+    size_t send_offset = slot_idx * kSendBufferSize;
     auto send_slice_mr = rdmapp::mr_view(send_mr_, send_offset,
                                          sizeof(RpcHeader) + req_data.size());
 
@@ -141,12 +146,14 @@ public:
 private:
   cppcoro::task<void> recv_worker(size_t worker_idx) {
     spdlog::info("recv_worker[{}] started", worker_idx);
-    size_t offset = worker_idx * kMsgSize;
+    size_t offset = worker_idx * kRecvBufferSize;
     while (true) {
-      auto recv_slice_mr = rdmapp::mr_view(recv_mr_, offset, kMsgSize);
+      auto recv_slice_mr = rdmapp::mr_view(recv_mr_, offset, kRecvBufferSize);
       try {
         auto [nbytes, _] =
             co_await qp_->recv(recv_slice_mr, rdmapp::use_native_awaitable);
+
+        assert(nbytes >= sizeof(RpcHeader));
 
         if (nbytes < sizeof(RpcHeader))
           continue;
@@ -173,6 +180,7 @@ private:
         }
         // 拷贝数据
         size_t payload_len = header->payload_len;
+        assert(payload_len != 0);
         size_t copy_len =
             std::min((size_t)payload_len, slot.user_resp_buffer.size());
         std::memcpy(slot.user_resp_buffer.data(),
@@ -200,17 +208,47 @@ private:
   }
 };
 
+static inline constexpr int kBufferCnt = 1024;
+static inline constexpr int kBufferSize = 4096;
+inline std::vector<std::byte> global_disk_pool_{kBufferSize * kBufferCnt,
+                                                std::byte{0xEE}};
+inline std::atomic<int> g_disk_pool_cnt{0};
+
+inline std::size_t default_handler(std::span<std::byte> payload
+                                   [[maybe_unused]],
+                                   std::span<std::byte> resp) noexcept {
+  const size_t offset = g_disk_pool_cnt++ % kBufferCnt * kBufferSize;
+  auto const from =
+      std::span<std::byte>(global_disk_pool_.begin() + offset, kBufferSize);
+  assert(from.size() <= resp.size());
+  std::copy_n(from.begin(), from.size(), resp.begin());
+  return from.size();
+}
+
 class RpcServer {
+
+  using Handler = std::size_t (*)(std::span<std::byte> payload,
+                                  std::span<std::byte> resp);
+
+  Handler h_;
   std::shared_ptr<rdmapp::qp> qp_;
   cppcoro::static_thread_pool tp_{4};
 
-  std::vector<std::byte> buffer_pool_;
-  rdmapp::local_mr mr_;
+  std::vector<std::byte> recv_buffer_pool_;
+  rdmapp::local_mr recv_mr_;
+  std::vector<std::byte> send_buffer_pool_;
+  rdmapp::local_mr send_mr_;
 
 public:
-  RpcServer(std::shared_ptr<rdmapp::qp> qp)
-      : qp_(qp), buffer_pool_(kRecvDepth * kMsgSize),
-        mr_(qp->pd_ptr()->reg_mr(buffer_pool_.data(), buffer_pool_.size())) {
+  RpcServer(std::shared_ptr<rdmapp::qp> qp, Handler h = default_handler)
+      : h_(h), qp_(qp), recv_buffer_pool_(kRecvDepth * kSendBufferSize),
+        recv_mr_(qp->pd_ptr()->reg_mr(recv_buffer_pool_.data(),
+                                      recv_buffer_pool_.size())),
+        send_buffer_pool_(kRecvDepth * kRecvBufferSize),
+        send_mr_(qp->pd_ptr()->reg_mr(send_buffer_pool_.data(),
+                                      send_buffer_pool_.size()))
+
+  {
     spdlog::info("server: initialized with {} concurrent workers", kRecvDepth);
   }
 
@@ -231,18 +269,20 @@ public:
 private:
   // 单个 Worker：负责一个 Slot 的 接收 -> 处理 -> 发送 循环
   cppcoro::task<void> server_worker(size_t idx) {
-    size_t offset = idx * kMsgSize;
+    size_t recv_offset = idx * kSendBufferSize;
+    size_t send_offset = idx * kRecvBufferSize;
     spdlog::info("server_worker {} spawn", idx);
+    auto recv_mr = rdmapp::mr_view(recv_mr_, recv_offset, kSendBufferSize);
+    auto send_mr = rdmapp::mr_view(send_mr_, send_offset, kRecvBufferSize);
 
     while (true) {
       // 1. 准备接收视口 (View)
       // 使用 mr_view 构造切片，避免重复注册 [1]
-      auto recv_view = rdmapp::mr_view(mr_, offset, kMsgSize);
 
       // 2. 挂起等待请求
       // 此时 Buffer 归 NIC 写入，CPU 不可动
       auto [nbytes, _] =
-          co_await qp_->recv(recv_view, rdmapp::use_native_awaitable);
+          co_await qp_->recv(recv_mr, rdmapp::use_native_awaitable);
 
       if (nbytes < sizeof(RpcHeader)) {
         spdlog::warn("server: recv too small packet: size={} expected={}",
@@ -254,30 +294,26 @@ private:
       // 此时数据已在 Buffer，切换到 CPU 密集型线程处理
       co_await tp_.schedule();
 
+      auto recv_view = rdmapp::mr_view(recv_mr_, recv_offset, nbytes);
+
       // ---------------- 业务逻辑区域 ----------------
-      auto *header =
-          reinterpret_cast<RpcHeader *>(buffer_pool_.data() + offset);
-
-      // 简单的校验
-      if (header->payload_len + sizeof(RpcHeader) > nbytes) {
+      auto *header = reinterpret_cast<RpcHeader *>(recv_mr.addr());
+      assert(header->payload_len + sizeof(RpcHeader) == recv_view.length());
+      if (header->payload_len + sizeof(RpcHeader) != recv_view.length()) {
         spdlog::error("server: header payload len mismatch");
-        // 可以在这里 continue，但需要考虑是否需要回复错误包
-        // 为简化，这里假设数据总是合法的，继续处理
       }
+      auto payload = recv_view.span().subspan<sizeof(RpcHeader)>();
 
-      std::span<std::byte> payload{buffer_pool_.data() + offset +
-                                       sizeof(RpcHeader),
-                                   header->payload_len};
+      auto *resp_header = reinterpret_cast<RpcHeader *>(send_mr.addr());
+      size_t resp_payload_len =
+          h_(payload, send_mr.span().subspan<sizeof(RpcHeader)>());
+      resp_header->req_id = header->req_id;
+      resp_header->payload_len = resp_payload_len;
 
-      // 模拟业务处理：原地修改 Payload
-      std::fill(payload.begin(), payload.end(), std::byte{0xEE});
+      size_t resp_len = sizeof(RpcHeader) + resp_payload_len;
+      auto send_view = rdmapp::mr_view(send_mr_, send_offset, resp_len);
 
-      // 更新 Header：Response 长度 (ReqID 保持不变)
-      header->payload_len = payload.size();
-      // ---------------------------------------------
-
-      size_t resp_len = sizeof(RpcHeader) + header->payload_len;
-      auto send_view = rdmapp::mr_view(mr_, offset, resp_len);
+      assert(resp_len <= kRecvBufferSize);
 
       try {
         co_await qp_->send(send_view, rdmapp::use_native_awaitable);

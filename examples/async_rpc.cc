@@ -36,8 +36,8 @@ void call_loop() {}
 void sync_rpc_test_worker(RpcClient &client) {
   spdlog::info("sync_rpc_worker started");
   // 构造一些测试数据
-  std::vector<std::byte> req_vec(kMsgSize - sizeof(RpcHeader), std::byte{0x01});
-  std::vector<std::byte> resp_vec(kMsgSize, std::byte{0x00});
+  std::vector<std::byte> req_vec(kSendMsgSize, std::byte{0x01});
+  std::vector<std::byte> resp_vec(kRecvMsgSize, std::byte{0x00});
 
   std::span<std::byte> req_span(req_vec);
   std::span<std::byte> resp_span(resp_vec);
@@ -50,8 +50,9 @@ void sync_rpc_test_worker(RpcClient &client) {
     size_t n = cppcoro::sync_wait(client.call(req_span, resp_span));
 
     // 简单验证
-    if (n != req_span.size()) {
-      spdlog::error("Len mismatch: expect {} got {}", req_span.size(), n);
+    if (n != resp_span.size()) {
+      spdlog::error("resp length mismatch: expect {} got {}", resp_span.size(),
+                    n);
     }
     if (resp_span[0] != std::byte{0xEE}) {
       spdlog::error("Content mismatch: expect 0xEE got {}",
@@ -79,8 +80,8 @@ void sync_rpc_test_worker(RpcClient &client) {
 
 cppcoro::task<void> rpc_test_worker(RpcClient &client) {
   // 构造一些测试数据
-  std::vector<std::byte> req_vec(kMsgSize - sizeof(RpcHeader), std::byte{0x01});
-  std::vector<std::byte> resp_vec(kMsgSize, std::byte{0x00});
+  std::vector<std::byte> req_vec(kSendMsgSize, std::byte{0x01});
+  std::vector<std::byte> resp_vec(kRecvMsgSize, std::byte{0x00});
 
   std::span<std::byte> req_span(req_vec);
   std::span<std::byte> resp_span(resp_vec);
@@ -93,8 +94,8 @@ cppcoro::task<void> rpc_test_worker(RpcClient &client) {
     size_t n = co_await client.call(req_span, resp_span);
 
     // 简单验证
-    if (n != req_span.size()) {
-      spdlog::error("Len mismatch: expect {} got {}", req_span.size(), n);
+    if (n != resp_span.size()) {
+      spdlog::error("len mismatch: expect {} got {}", resp_span.size(), n);
     }
     if (resp_span[0] != std::byte{0xEE}) {
       spdlog::error("Content mismatch: expect 0xEE got {}",
@@ -143,10 +144,11 @@ cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
 
 void client(rdmapp::qp_connector &connector) {
   asio::io_context io_ctx(1);
-  std::jthread w([&io_ctx]() { io_ctx.run(); });
   auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
   io_ctx.run();
-  cppcoro::sync_wait(run_client(qp_fut.get()));
+  auto qp = qp_fut.get();
+  spdlog::info("connected: qp={}", fmt::ptr(qp.get()));
+  cppcoro::sync_wait(run_client(qp));
 }
 
 void server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
