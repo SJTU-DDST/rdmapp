@@ -81,9 +81,7 @@ int main(int argc, char *argv[]) {
   rdmapp::log::setup(rdmapp::log::level::debug);
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(4);
-  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
   switch (argc) {
   case 2: {
@@ -94,15 +92,15 @@ int main(int argc, char *argv[]) {
     });
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
+    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd);
     asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
     io_ctx->run();
     break;
   }
 
   case 3: {
-    auto connector = std::make_shared<rdmapp::qp_connector>(
-        argv[1], std::stoi(argv[2]), pd, cq);
+    auto connector =
+        std::make_shared<rdmapp::qp_connector>(argv[1], std::stoi(argv[2]), pd);
     asio::co_spawn(*io_ctx, client(connector), asio::detached);
     io_ctx->run();
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);

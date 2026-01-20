@@ -15,11 +15,10 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-#include "rdmapp/completion_token.h"
-#include "rdmapp/cq_poller.h"
-#include "rdmapp/qp.h"
+#include <rdmapp/completion_token.h>
 #include <rdmapp/log.h>
 #include <rdmapp/mr.h>
+#include <rdmapp/qp.h>
 #include <rdmapp/rdmapp.h>
 
 constexpr std::size_t kMessageSize = 4096;
@@ -120,7 +119,8 @@ task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
                static_cast<double>(total_duration.count()) / kSendCount);
 }
 
-task<void> server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
+task<void> server(asio::io_context &io_ctx,
+                  rdmapp::native_qp_acceptor &acceptor) {
   auto guard = asio::make_work_guard(io_ctx);
   std::jthread w([&io_ctx]() { io_ctx.run(); });
   while (true) {
@@ -131,7 +131,7 @@ task<void> server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
   co_return;
 }
 
-task<void> client(rdmapp::qp_connector &connector) {
+task<void> client(rdmapp::native_qp_connector &connector) {
   asio::io_context io_ctx(1);
   auto guard = asio::make_work_guard(io_ctx);
   std::jthread w([&io_ctx]() { io_ctx.run(); });
@@ -149,22 +149,19 @@ int main(int argc, char *argv[]) {
 #endif
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_unique<rdmapp::native_cq_poller>(cq);
 
   switch (argc) {
   case 2: {
-    auto cq2 = std::make_shared<rdmapp::cq>(device);
-    auto cq_poller2 = std::make_unique<rdmapp::native_cq_poller>(cq2);
     auto io_ctx = std::make_shared<asio::io_context>(1);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = rdmapp::qp_acceptor(io_ctx, port, pd, cq, cq2);
+    auto acceptor = rdmapp::native_qp_acceptor(io_ctx, port, pd);
     server(*io_ctx, acceptor);
     break;
   }
 
   case 3: {
-    auto connector = rdmapp::qp_connector(argv[1], std::stoi(argv[2]), pd, cq);
+    auto connector =
+        rdmapp::native_qp_connector(argv[1], std::stoi(argv[2]), pd);
     client(connector);
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;

@@ -114,9 +114,7 @@ int main(int argc, char *argv[]) {
 #endif
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
   auto io_ctx = std::make_shared<asio::io_context>(1);
-  auto cq_poller = std::make_unique<rdmapp::cq_poller>(cq);
 
   switch (argc) {
   case 2: {
@@ -127,7 +125,7 @@ int main(int argc, char *argv[]) {
     });
     auto work_guard = asio::make_work_guard(*io_ctx);
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd, cq);
+    auto acceptor = std::make_shared<rdmapp::qp_acceptor>(io_ctx, port, pd);
     asio::co_spawn(*io_ctx, server(acceptor), asio::detached);
     while (!io_ctx->stopped()) {
       io_ctx->poll();
@@ -136,8 +134,8 @@ int main(int argc, char *argv[]) {
   }
 
   case 3: {
-    auto connector = std::make_shared<rdmapp::qp_connector>(
-        argv[1], std::stoi(argv[2]), pd, cq);
+    auto connector =
+        std::make_shared<rdmapp::qp_connector>(argv[1], std::stoi(argv[2]), pd);
     asio::co_spawn(*io_ctx, client(connector), asio::detached);
     while (!io_ctx->stopped()) {
       io_ctx->poll();

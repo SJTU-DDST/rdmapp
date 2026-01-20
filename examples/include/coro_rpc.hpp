@@ -3,6 +3,7 @@
 #include <concurrentqueue.h> // moodycamel
 #include <coroutine>
 #include <cppcoro/async_mutex.hpp>
+#include <cppcoro/async_scope.hpp>
 #include <cppcoro/schedule_on.hpp>
 #include <cppcoro/static_thread_pool.hpp>
 #include <cppcoro/sync_wait.hpp>
@@ -55,7 +56,7 @@ struct RpcResponseAwaitable {
 };
 
 class RpcClient {
-  static constexpr size_t kMaxInflight = 256;
+  static constexpr size_t kMaxInflight = kRecvDepth;
   std::shared_ptr<rdmapp::qp> qp_;
 
   std::vector<std::byte> send_buffer_pool_;
@@ -68,7 +69,6 @@ class RpcClient {
   moodycamel::ConcurrentQueue<uint32_t> free_slots_;
 
   std::atomic<uint64_t> global_seq_{0};
-  cppcoro::static_thread_pool tp_{4};
   std::jthread worker_;
 
 public:
@@ -76,7 +76,7 @@ public:
       : qp_(qp), send_buffer_pool_(kMaxInflight * kSendBufferSize),
         send_mr_(qp->pd_ptr()->reg_mr(send_buffer_pool_.data(),
                                       send_buffer_pool_.size())),
-        recv_buffer_pool_(kRecvDepth * kRecvBufferSize),
+        recv_buffer_pool_(kMaxInflight * kRecvBufferSize),
         recv_mr_(qp->pd_ptr()->reg_mr(recv_buffer_pool_.data(),
                                       recv_buffer_pool_.size())),
         slots_(kMaxInflight), free_slots_(kMaxInflight * 2),
@@ -91,19 +91,24 @@ public:
   }
 
   void start_recv_workers() {
-    std::vector<cppcoro::task<void>> tasks;
-    for (size_t i = 0; i < kRecvDepth; ++i) {
-      tasks.emplace_back(cppcoro::schedule_on(tp_, recv_worker(i)));
+    cppcoro::async_scope scope;
+    for (size_t i = 0; i < kMaxInflight; ++i) {
+      scope.spawn(recv_worker(i));
     }
-    cppcoro::sync_wait(cppcoro::when_all(std::move(tasks)));
+    cppcoro::sync_wait(scope.join());
   }
 
   cppcoro::task<size_t> call(std::span<const std::byte> req_data,
                              std::span<std::byte> resp_buffer) {
 
     uint32_t slot_idx;
-    while (!free_slots_.try_dequeue(slot_idx))
-      ; // 信号量保证了这里一定能拿到
+    int spin_cnt = 0;
+    while (!free_slots_.try_dequeue(slot_idx)) {
+      spin_cnt++;
+      if (spin_cnt > 10'000) {
+        spdlog::warn("spin too much time, cnt={}", spin_cnt);
+      }
+    }
 
     // 2. 生成并编码 ID
     uint64_t seq = global_seq_.fetch_add(1);
@@ -205,6 +210,24 @@ private:
         break;
       }
     }
+  }
+};
+
+class RpcClientMux {
+  std::vector<std::unique_ptr<RpcClient>> clients_;
+  std::atomic<unsigned int> selector_;
+
+public:
+  RpcClientMux(std::vector<std::shared_ptr<rdmapp::qp>> qp) {
+    for (auto q : qp) {
+      clients_.emplace_back(std::make_unique<RpcClient>(q));
+    }
+  }
+  cppcoro::task<size_t> call(std::span<const std::byte> req_data,
+                             std::span<std::byte> resp_buffer) {
+    return clients_[selector_.fetch_add(1, std::memory_order_relaxed) %
+                    clients_.size()]
+        ->call(req_data, resp_buffer);
   }
 };
 

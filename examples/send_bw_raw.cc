@@ -138,7 +138,7 @@ cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
   co_return;
 }
 
-void client(rdmapp::qp_connector &connector) {
+void client(rdmapp::native_qp_connector &connector) {
   asio::io_context io_ctx(1);
   std::jthread w([&io_ctx]() { io_ctx.run(); });
   auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
@@ -146,7 +146,7 @@ void client(rdmapp::qp_connector &connector) {
   cppcoro::sync_wait(run_client(qp_fut.get()));
 }
 
-void server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
+void server(asio::io_context &io_ctx, rdmapp::native_qp_acceptor &acceptor) {
   spdlog::info("server waiting for connection...");
 
   auto guard = asio::make_work_guard(io_ctx);
@@ -168,20 +168,19 @@ int main(int argc, char *argv[]) {
   // NOTE: to use first card, use (0,1) but not (1,1) here
   auto device = std::make_shared<rdmapp::device>(1, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_unique<rdmapp::native_cq_poller>(cq);
 
   switch (argc) {
   case 2: {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto io_ctx = std::make_shared<asio::io_context>(1);
-    auto acceptor = rdmapp::qp_acceptor(io_ctx, port, pd, cq);
+    auto acceptor = rdmapp::native_qp_acceptor(io_ctx, port, pd);
     server(*io_ctx, acceptor);
     break;
   }
 
   case 3: {
-    auto connector = rdmapp::qp_connector(argv[1], std::stoi(argv[2]), pd, cq);
+    auto connector =
+        rdmapp::native_qp_connector(argv[1], std::stoi(argv[2]), pd);
     client(connector);
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;

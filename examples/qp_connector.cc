@@ -10,22 +10,27 @@
 
 namespace rdmapp {
 
-qp_connector::qp_connector(std::string const &hostname, uint16_t port,
-                           std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-                           std::shared_ptr<cq> send_cq,
-                           std::shared_ptr<srq> srq)
-    : pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq),
-      hostname_(hostname), port_(port) {}
+template <typename cq_poller_t>
+basic_qp_connector<cq_poller_t>::basic_qp_connector(std::string const &hostname,
+                                                    uint16_t port,
+                                                    std::shared_ptr<pd> pd,
+                                                    std::shared_ptr<srq> srq)
+    : pd_(pd), srq_(srq), hostname_(hostname), port_(port) {}
 
-qp_connector::qp_connector(std::string const &hostname, uint16_t port,
-                           std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-                           std::shared_ptr<srq> srq)
-    : qp_connector(hostname, port, pd, cq, cq, srq) {}
+template <typename cq_poller_t>
+std::shared_ptr<rdmapp::cq> basic_qp_connector<cq_poller_t>::alloc_cq() {
+  auto cq = std::make_shared<rdmapp::cq>(pd_->device_ptr(), 512);
+  pollers_.emplace_back(cq);
+  pollers_.emplace_back(cq);
+  return cq;
+}
 
+template <typename cq_poller_t>
 asio::awaitable<std::shared_ptr<rdmapp::qp>>
-qp_connector::from_socket(asio::ip::tcp::socket socket) {
-  auto qp_ptr =
-      std::make_shared<rdmapp::qp>(this->pd_, this->recv_cq_, this->send_cq_);
+basic_qp_connector<cq_poller_t>::from_socket(asio::ip::tcp::socket socket) {
+  auto send_cq = alloc_cq();
+  auto recv_cq = alloc_cq();
+  auto qp_ptr = std::make_shared<rdmapp::qp>(this->pd_, recv_cq, send_cq);
   co_await send_qp(*qp_ptr, socket);
 
   auto remote_qp = co_await recv_qp(socket);
@@ -40,7 +45,9 @@ qp_connector::from_socket(asio::ip::tcp::socket socket) {
   co_return qp_ptr;
 }
 
-asio::awaitable<std::shared_ptr<qp>> qp_connector::connect() {
+template <typename cq_poller_t>
+asio::awaitable<std::shared_ptr<qp>>
+basic_qp_connector<cq_poller_t>::connect() {
   auto executor = co_await asio::this_coro::executor;
 
   asio::ip::tcp::resolver resolver(executor);
@@ -62,5 +69,8 @@ asio::awaitable<std::shared_ptr<qp>> qp_connector::connect() {
   spdlog::info("connector: created qp from tcp connection");
   co_return qp;
 }
+
+template class basic_qp_connector<cq_poller>;
+template class basic_qp_connector<native_cq_poller>;
 
 } // namespace rdmapp

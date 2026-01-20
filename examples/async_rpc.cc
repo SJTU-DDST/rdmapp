@@ -26,12 +26,54 @@ void signal_handler(int) {
 }
 #endif
 
-constexpr int kSendCount = 2 * 1000 * 1000;
+constexpr int kSendCount = 1000 * 1000;
 constexpr int kBatchSize = 10000;
 
-constexpr int kConcurrency = 4;
+constexpr int kConcurrency = 16;
 
-void call_loop() {}
+struct statistic {
+  long long total_operations = kSendCount * kConcurrency;
+  long long total_duration_us = 0;
+  size_t send_msg_size_bytes = kSendMsgSize;
+  size_t recv_msg_size_bytes = kRecvMsgSize;
+} g_stat_coro, g_stat_sync;
+
+void print_stats(std::string_view prefix, long long total_operations,
+                 long long total_duration_us, size_t send_msg_size_bytes,
+                 size_t recv_msg_size_bytes) noexcept {
+  if (!total_duration_us)
+    exit(-10);
+
+  double total_duration_s = total_duration_us / 1'000'000.0;
+  // IOPS
+  double iops = static_cast<double>(total_operations) / total_duration_s;
+
+  // Bandwidth
+  size_t single_op_total_bytes = send_msg_size_bytes + recv_msg_size_bytes;
+  long long total_data_bytes = total_operations * single_op_total_bytes;
+
+  // BW in GB/s (using 1024^3 Bytes for 1GB)
+  double bw_gb_per_s = static_cast<double>(total_data_bytes) /
+                       total_duration_s / (1024.0 * 1024.0 * 1024.0);
+
+  // BW in Gbps (using 10^9 bits for 1Gbit)
+  long long total_data_bits = total_data_bytes * 8;
+  double bw_gbps =
+      static_cast<double>(total_data_bits) / total_duration_s / 1'000'000'000.0;
+
+  spdlog::info("--- {} Statistics ---", prefix);
+  spdlog::info("  Total operations: {}", total_operations);
+  spdlog::info("  Overall elapsed time: {} us", total_duration_us);
+  spdlog::info("  Achieved IOPS: {:.2f} kIOPS ({:.0f} OPS/s)", iops / 1000.0,
+               iops);
+  spdlog::info("  Achieved Bandwidth: {:.3f} GB/s", bw_gb_per_s);
+  spdlog::info("  Achieved Bandwidth: {:.3f} Gbps", bw_gbps);
+}
+
+void print_stats(std::string_view prefix, statistic const &stat) noexcept {
+  print_stats(prefix, stat.total_operations, stat.total_duration_us,
+              stat.send_msg_size_bytes, stat.recv_msg_size_bytes);
+}
 
 void sync_rpc_test_worker(RpcClient &client) {
   spdlog::info("sync_rpc_worker started");
@@ -76,6 +118,7 @@ void sync_rpc_test_worker(RpcClient &client) {
   spdlog::info("[rpc_call] total time: {}us", total_duration.count());
   spdlog::info("[rpc_call] average time per operation: {:.3f}us",
                static_cast<double>(total_duration.count()) / kSendCount);
+  g_stat_sync.total_duration_us = total_duration.count();
 }
 
 cppcoro::task<void> rpc_test_worker(RpcClient &client) {
@@ -119,12 +162,12 @@ cppcoro::task<void> rpc_test_worker(RpcClient &client) {
   spdlog::info("[rpc_call] total time: {}us", total_duration.count());
   spdlog::info("[rpc_call] average time per operation: {:.3f}us",
                static_cast<double>(total_duration.count()) / kSendCount);
+  g_stat_coro.total_duration_us = total_duration.count();
 }
 
 cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
   RpcClient client{qp};
 
-  cppcoro::static_thread_pool tp(4);
   std::vector<cppcoro::task<void>> tasks;
   for (int i = 0; i < kConcurrency; i++) {
     tasks.emplace_back(rpc_test_worker(client));
@@ -139,10 +182,12 @@ cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
   }
   workers_.clear();
   spdlog::info("run_client: all {} call threads done", kConcurrency);
+  print_stats("coro", g_stat_coro);
+  print_stats("sync", g_stat_sync);
   co_return;
 }
 
-void client(rdmapp::qp_connector &connector) {
+void client(rdmapp::native_qp_connector &connector) {
   asio::io_context io_ctx(1);
   auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
   io_ctx.run();
@@ -151,7 +196,7 @@ void client(rdmapp::qp_connector &connector) {
   cppcoro::sync_wait(run_client(qp));
 }
 
-void server(asio::io_context &io_ctx, rdmapp::qp_acceptor &acceptor) {
+void server(asio::io_context &io_ctx, rdmapp::native_qp_acceptor &acceptor) {
   spdlog::info("Server waiting for connection...");
 
   auto guard = asio::make_work_guard(io_ctx);
@@ -176,23 +221,19 @@ int main(int argc, char *argv[]) {
 #endif
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller = std::make_unique<rdmapp::native_cq_poller>(cq);
-  auto cq2 = std::make_shared<rdmapp::cq>(device);
-  auto cq_poller2 = std::make_unique<rdmapp::native_cq_poller>(cq2);
 
   switch (argc) {
   case 2: {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto io_ctx = std::make_shared<asio::io_context>(1);
-    auto acceptor = rdmapp::qp_acceptor(io_ctx, port, pd, cq, cq2);
+    auto acceptor = rdmapp::native_qp_acceptor(io_ctx, port, pd);
     server(*io_ctx, acceptor);
     break;
   }
 
   case 3: {
     auto connector =
-        rdmapp::qp_connector(argv[1], std::stoi(argv[2]), pd, cq, cq2);
+        rdmapp::native_qp_connector(argv[1], std::stoi(argv[2]), pd);
     client(connector);
     spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
     break;

@@ -2,7 +2,9 @@
 #include <asio/awaitable.hpp>
 #include <asio/ip/tcp.hpp>
 #include <cstdint>
+#include <list>
 
+#include <rdmapp/cq_poller.h>
 #include <rdmapp/detail/noncopyable.h>
 #include <rdmapp/device.h>
 #include <rdmapp/pd.h>
@@ -14,13 +16,15 @@ namespace rdmapp {
  * @brief This class is used to accept incoming connections and queue pairs.
  *
  */
-class qp_acceptor : public noncopyable {
+template <typename cq_poller_t> class basic_qp_acceptor : public noncopyable {
   std::shared_ptr<pd> pd_;
-  std::shared_ptr<cq> recv_cq_;
-  std::shared_ptr<cq> send_cq_;
   std::shared_ptr<srq> srq_;
+  std::list<cq_poller_t> pollers_;
+
   std::shared_ptr<asio::io_context> io_ctx_;
   asio::ip::tcp::acceptor acceptor_;
+
+  std::shared_ptr<rdmapp::cq> alloc_cq();
 
 public:
   /**
@@ -33,9 +37,8 @@ public:
    * @param srq () The shared receive queue to use for incoming Queue
    * Pairs.
    */
-  qp_acceptor(std::shared_ptr<asio::io_context> io_ctx, uint16_t port,
-              std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-              std::shared_ptr<srq> srq = nullptr);
+  basic_qp_acceptor(std::shared_ptr<asio::io_context> io_ctx, uint16_t port,
+                    std::shared_ptr<pd> pd, std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief Construct a new acceptor object.
@@ -48,9 +51,6 @@ public:
    * @param srq (Optional) The shared receive queue to use for incoming Queue
    * Pairs.
    */
-  qp_acceptor(std::shared_ptr<asio::io_context> io_ctx, uint16_t port,
-              std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-              std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
 
   /**
    * @brief This function is used to accept an incoming connection and queue
@@ -62,7 +62,10 @@ public:
    */
   asio::awaitable<std::shared_ptr<qp>> accept();
 
-  ~qp_acceptor() = default;
+  ~basic_qp_acceptor() = default;
 };
+
+using qp_acceptor = basic_qp_acceptor<cq_poller>;
+using native_qp_acceptor = basic_qp_acceptor<native_cq_poller>;
 
 } // namespace rdmapp

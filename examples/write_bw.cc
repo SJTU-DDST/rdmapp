@@ -137,8 +137,6 @@ int main(int argc, char *argv[]) {
 
   auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
-  auto cq = std::make_shared<rdmapp::cq>(device);
-  rdmapp::cq_poller cq_poller{cq};
   io_ctx_pool context_pool(kQP);
 
   auto reporter_fn = [&](std::stop_token token) {
@@ -167,7 +165,7 @@ int main(int argc, char *argv[]) {
   if (argc == 2) {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
     auto acceptor = std::make_shared<rdmapp::qp_acceptor>(
-        context_pool.get_shared(), port, pd, cq);
+        context_pool.get_shared(), port, pd);
     asio::co_spawn(context_pool.get(), server(context_pool, acceptor),
                    asio::detached);
     context_pool.run();
@@ -176,8 +174,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (argc == 3) {
-    auto connector = std::make_shared<rdmapp::qp_connector>(
-        argv[1], std::stoi(argv[2]), pd, cq);
+    auto connector =
+        std::make_shared<rdmapp::qp_connector>(argv[1], std::stoi(argv[2]), pd);
     asio::co_spawn(context_pool.get(), client(context_pool, connector),
                    asio::detached);
     auto reporter = std::jthread(reporter_fn);
