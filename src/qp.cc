@@ -38,26 +38,29 @@ std::atomic<uint32_t> basic_qp::next_sq_psn = 1;
 basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
                    uint32_t remote_psn, union ibv_gid remote_gid,
                    std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-                   std::shared_ptr<srq> srq)
-    : basic_qp(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq,
-               srq) {}
+                   std::shared_ptr<srq> srq, qp_config config)
+    : basic_qp(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq, srq,
+               config) {}
 
 basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
                    uint32_t remote_psn, union ibv_gid remote_gid,
                    std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq)
-    : basic_qp(pd, recv_cq, send_cq, srq) {
+                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq,
+                   qp_config config)
+    : basic_qp(pd, recv_cq, send_cq, srq, config) {
   rtr(remote_lid, remote_qpn, remote_psn, remote_gid);
   rts();
 }
 
 basic_qp::basic_qp(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<cq> cq,
-                   std::shared_ptr<srq> srq)
-    : basic_qp(pd, cq, cq, srq) {}
+                   std::shared_ptr<srq> srq, qp_config config)
+    : basic_qp(pd, cq, cq, srq, config) {}
 
 basic_qp::basic_qp(std::shared_ptr<rdmapp::pd> pd, std::shared_ptr<cq> recv_cq,
-                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq)
-    : qp_(nullptr), pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq) {
+                   std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq,
+                   qp_config config)
+    : qp_(nullptr), pd_(pd), recv_cq_(recv_cq), send_cq_(send_cq), srq_(srq),
+      config_(config) {
   create();
   init();
 }
@@ -85,8 +88,8 @@ void basic_qp::create() {
   qp_init_attr.send_cq = send_cq_->cq_;
   qp_init_attr.cap.max_recv_sge = 1;
   qp_init_attr.cap.max_send_sge = 1;
-  qp_init_attr.cap.max_recv_wr = 256;
-  qp_init_attr.cap.max_send_wr = 256;
+  qp_init_attr.cap.max_recv_wr = config_.max_recv_wr;
+  qp_init_attr.cap.max_send_wr = config_.max_send_wr;
   qp_init_attr.sq_sig_all = 0;
   qp_init_attr.qp_context = this;
 

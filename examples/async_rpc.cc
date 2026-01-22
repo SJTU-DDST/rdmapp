@@ -6,10 +6,12 @@
 #include <asio/co_spawn.hpp>
 #include <asio/io_context.hpp>
 #include <asio/use_future.hpp>
+#include <cppcoro/async_scope.hpp>
 #include <cppcoro/sync_wait.hpp>
 #include <cppcoro/when_all.hpp>
 #include <cstring>
 #include <iostream>
+#include <memory>
 
 #include <rdmapp/cq_poller.h>
 #include <rdmapp/log.h>
@@ -27,12 +29,17 @@ void signal_handler(int) {
 #endif
 
 constexpr int kSendCount = 1000 * 1000;
-constexpr int kBatchSize = 10000;
+#ifdef RDMAPP_BUILD_DEBUG
+constexpr int kBatchSize = 100'000;
+#else
+constexpr int kBatchSize = 400'000;
+#endif
 
-constexpr int kConcurrency = 16;
+int kConcurrency = 16;
+int kQP = 4;
 
 struct statistic {
-  long long total_operations = kSendCount * kConcurrency;
+  long long total_operations = 0;
   long long total_duration_us = 0;
   size_t send_msg_size_bytes = kSendMsgSize;
   size_t recv_msg_size_bytes = kRecvMsgSize;
@@ -75,7 +82,7 @@ void print_stats(std::string_view prefix, statistic const &stat) noexcept {
               stat.send_msg_size_bytes, stat.recv_msg_size_bytes);
 }
 
-void sync_rpc_test_worker(RpcClient &client) {
+void sync_rpc_test_worker(RpcClientMux &client) {
   spdlog::info("sync_rpc_worker started");
   // 构造一些测试数据
   std::vector<std::byte> req_vec(kSendMsgSize, std::byte{0x01});
@@ -119,9 +126,10 @@ void sync_rpc_test_worker(RpcClient &client) {
   spdlog::info("[rpc_call] average time per operation: {:.3f}us",
                static_cast<double>(total_duration.count()) / kSendCount);
   g_stat_sync.total_duration_us = total_duration.count();
+  g_stat_sync.total_operations = kSendCount * kConcurrency;
 }
 
-cppcoro::task<void> rpc_test_worker(RpcClient &client) {
+cppcoro::task<void> rpc_test_worker(RpcClientMux &client) {
   // 构造一些测试数据
   std::vector<std::byte> req_vec(kSendMsgSize, std::byte{0x01});
   std::vector<std::byte> resp_vec(kRecvMsgSize, std::byte{0x00});
@@ -163,10 +171,11 @@ cppcoro::task<void> rpc_test_worker(RpcClient &client) {
   spdlog::info("[rpc_call] average time per operation: {:.3f}us",
                static_cast<double>(total_duration.count()) / kSendCount);
   g_stat_coro.total_duration_us = total_duration.count();
+  g_stat_coro.total_operations = kSendCount * kConcurrency;
 }
 
-cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
-  RpcClient client{qp};
+cppcoro::task<void> run_client(std::vector<std::shared_ptr<rdmapp::qp>> qp) {
+  RpcClientMux client{std::move(qp), 512};
 
   std::vector<cppcoro::task<void>> tasks;
   for (int i = 0; i < kConcurrency; i++) {
@@ -189,11 +198,16 @@ cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
 
 void client(rdmapp::native_qp_connector &connector) {
   asio::io_context io_ctx(1);
-  auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
-  io_ctx.run();
-  auto qp = qp_fut.get();
-  spdlog::info("connected: qp={}", fmt::ptr(qp.get()));
-  cppcoro::sync_wait(run_client(qp));
+  std::vector<std::shared_ptr<rdmapp::qp>> qp_vec;
+  auto guard = asio::make_work_guard(io_ctx);
+  std::jthread w([&]() { io_ctx.run(); });
+  for (int i = 0; i < kQP; i++) {
+    auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
+    auto qp = qp_fut.get();
+    spdlog::info("connected: qp={}", fmt::ptr(qp.get()));
+    qp_vec.push_back(qp);
+  }
+  cppcoro::sync_wait(run_client(std::move(qp_vec)));
 }
 
 void server(asio::io_context &io_ctx, rdmapp::native_qp_acceptor &acceptor) {
@@ -201,11 +215,16 @@ void server(asio::io_context &io_ctx, rdmapp::native_qp_acceptor &acceptor) {
 
   auto guard = asio::make_work_guard(io_ctx);
   std::jthread w([&io_ctx]() { io_ctx.run(); });
-  auto qp = asio::co_spawn(io_ctx, acceptor.accept(), asio::use_future).get();
+  cppcoro::async_scope scope;
+  std::list<RpcServer> servers_;
+  int cnt = 1;
+  while (true) {
+    auto qp = asio::co_spawn(io_ctx, acceptor.accept(), asio::use_future).get();
+    auto &it = servers_.emplace_back(qp, 2048);
+    scope.spawn(it.run());
+    spdlog::info("qp served: nr = {}", cnt++);
+  }
   guard.reset();
-
-  RpcServer server(qp);
-  cppcoro::sync_wait(server.run());
 }
 
 int main(int argc, char *argv[]) {
@@ -219,7 +238,7 @@ int main(int argc, char *argv[]) {
 #else
   rdmapp::log::setup(rdmapp::log::level::info);
 #endif
-  auto device = std::make_shared<rdmapp::device>(0, 1);
+  auto device = std::make_shared<rdmapp::device>(1, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
 
   switch (argc) {
@@ -231,7 +250,8 @@ int main(int argc, char *argv[]) {
     break;
   }
 
-  case 3: {
+  case 4: {
+    kConcurrency = std::stoi(argv[3]);
     auto connector =
         rdmapp::native_qp_connector(argv[1], std::stoi(argv[2]), pd);
     client(connector);

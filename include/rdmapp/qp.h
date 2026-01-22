@@ -28,6 +28,20 @@
 namespace rdmapp {
 
 /**
+ * @brief Configuration for a Queue Pair.
+ */
+struct qp_config {
+  uint32_t max_send_wr;
+  uint32_t max_recv_wr;
+};
+
+/**
+ * @brief Returns the default configuration for a Queue Pair.
+ * @return The default configuration.
+ */
+static constexpr qp_config default_qp_config() { return {256, 256}; }
+
+/**
  * @brief A structure holding the deserialized data required to connect to a
  * remote Queue Pair. This is typically received from a remote peer to establish
  * a connection.
@@ -126,6 +140,7 @@ class basic_qp : public noncopyable,
   std::shared_ptr<cq> recv_cq_;
   std::shared_ptr<cq> send_cq_;
   std::shared_ptr<srq> srq_;
+  qp_config const config_;
   std::vector<std::byte> user_data_;
 
   /**
@@ -356,7 +371,8 @@ public:
   basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-           std::shared_ptr<srq> srq = nullptr);
+           std::shared_ptr<srq> srq = nullptr,
+           qp_config config = default_qp_config());
   /**
    * @brief Constructs a new QP and connects it to a remote peer with separate
    * CQs. The QP will be in the Ready-To-Send (RTS) state upon construction.
@@ -370,11 +386,13 @@ public:
    * @param send_cq The Completion Queue for send completions.
    * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
    * will be posted here.
+   * @param config (Optional) The configuration for this QP.
    */
   basic_qp(const uint16_t remote_lid, const uint32_t remote_qpn,
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
+           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr,
+           qp_config config = default_qp_config());
   /**
    * @brief Constructs a new QP in the INIT state.
    *        The QP is not connected and must be manually transitioned to RTR and
@@ -384,9 +402,11 @@ public:
    * @param cq The Completion Queue for both send and receive completions.
    * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
    * will be posted here.
+   * @param config (Optional) The configuration for this QP.
    */
   basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-           std::shared_ptr<srq> srq = nullptr);
+           std::shared_ptr<srq> srq = nullptr,
+           qp_config config = default_qp_config());
   /**
    * @brief Constructs a new QP in the INIT state with separate CQs.
    *        The QP is not connected and must be manually transitioned to RTR and
@@ -397,9 +417,11 @@ public:
    * @param send_cq The Completion Queue for send completions.
    * @param srq (Optional) A Shared Receive Queue. If provided, receive WQEs
    * will be posted here.
+   * @param config (Optional) The configuration for this QP.
    */
   basic_qp(std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
-           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr);
+           std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr,
+           qp_config config = default_qp_config());
 
   /**
    * @brief Posts a raw send Work Request (`ibv_send_wr`) to the QP's Send

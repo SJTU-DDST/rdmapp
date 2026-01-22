@@ -8,6 +8,8 @@
 #include <spdlog/spdlog.h>
 
 #include "rdmapp/cq_poller.h"
+#include "rdmapp/qp.h"
+#include "rdmapp/srq.h"
 
 namespace rdmapp {
 
@@ -35,7 +37,8 @@ asio::awaitable<std::shared_ptr<qp>> basic_qp_acceptor<cq_poller_t>::accept() {
     auto recv_cq = alloc_cq();
     auto local_qp = std::make_shared<rdmapp::qp>(
         remote_qp.header.lid, remote_qp.header.qp_num, remote_qp.header.sq_psn,
-        remote_qp.header.gid, pd_, recv_cq, send_cq);
+        remote_qp.header.gid, pd_, recv_cq, send_cq, srq_,
+        qp_config{.max_send_wr = 2048, .max_recv_wr = 2048});
     local_qp->user_data() = std::move(remote_qp.user_data);
     co_await send_qp(*local_qp, socket);
     co_return local_qp;

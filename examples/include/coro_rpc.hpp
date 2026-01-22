@@ -20,7 +20,6 @@
 
 inline constexpr size_t kSendMsgSize = 256;
 inline constexpr size_t kRecvMsgSize = 4096;
-inline constexpr size_t kRecvDepth = 256;
 
 struct RpcHeader {
   uint64_t req_id;
@@ -31,7 +30,7 @@ struct RpcHeader {
 inline constexpr size_t kSendBufferSize = kSendMsgSize + sizeof(RpcHeader);
 inline constexpr size_t kRecvBufferSize = kRecvMsgSize + sizeof(RpcHeader);
 
-inline constexpr uintptr_t kRpcStatusCompleted = 0x1;
+// inline constexpr uintptr_t kRpcStatusCompleted = 0x1;
 
 struct RpcSlot {
   std::atomic<uintptr_t> waiter{0};
@@ -42,21 +41,15 @@ struct RpcSlot {
 
 struct RpcResponseAwaitable {
   RpcSlot &slot;
-  bool await_ready() const noexcept {
-    return slot.waiter.load() == kRpcStatusCompleted;
-  }
-  bool await_suspend(std::coroutine_handle<> h) noexcept {
-    uintptr_t expected = 0;
-    if (slot.waiter.compare_exchange_strong(expected, uintptr_t(h.address()))) {
-      return true;
-    }
-    return false;
+  constexpr bool await_ready() const noexcept { return false; }
+  void await_suspend(std::coroutine_handle<> h) noexcept {
+    slot.waiter.store(uintptr_t(h.address()));
   }
   size_t await_resume() noexcept { return slot.actual_len; }
 };
 
 class RpcClient {
-  static constexpr size_t kMaxInflight = kRecvDepth;
+  size_t max_inflight_;
   std::shared_ptr<rdmapp::qp> qp_;
 
   std::vector<std::byte> send_buffer_pool_;
@@ -72,27 +65,28 @@ class RpcClient {
   std::jthread worker_;
 
 public:
-  RpcClient(std::shared_ptr<rdmapp::qp> qp)
-      : qp_(qp), send_buffer_pool_(kMaxInflight * kSendBufferSize),
+  RpcClient(std::shared_ptr<rdmapp::qp> qp, size_t recv_depth = 512)
+      : max_inflight_(recv_depth), qp_(qp),
+        send_buffer_pool_(max_inflight_ * kSendBufferSize),
         send_mr_(qp->pd_ptr()->reg_mr(send_buffer_pool_.data(),
                                       send_buffer_pool_.size())),
-        recv_buffer_pool_(kMaxInflight * kRecvBufferSize),
+        recv_buffer_pool_(max_inflight_ * kRecvBufferSize),
         recv_mr_(qp->pd_ptr()->reg_mr(recv_buffer_pool_.data(),
                                       recv_buffer_pool_.size())),
-        slots_(kMaxInflight), free_slots_(kMaxInflight * 2),
+        slots_(max_inflight_), free_slots_(max_inflight_ * 2),
         worker_(&RpcClient::start_recv_workers, this) {
 
     // 初始化空闲索引池
-    for (uint32_t i = 0; i < kMaxInflight; ++i) {
+    for (uint32_t i = 0; i < max_inflight_; ++i) {
       free_slots_.enqueue(i);
     }
 
-    spdlog::info("client: initialized with {} slots", kMaxInflight);
+    spdlog::info("client: initialized with {} slots", max_inflight_);
   }
 
   void start_recv_workers() {
     cppcoro::async_scope scope;
-    for (size_t i = 0; i < kMaxInflight; ++i) {
+    for (size_t i = 0; i < max_inflight_; ++i) {
       scope.spawn(recv_worker(i));
     }
     cppcoro::sync_wait(scope.join());
@@ -170,7 +164,7 @@ private:
         // 解码：取低 32 位作为索引
         uint32_t slot_idx = static_cast<uint32_t>(recv_id & 0xFFFFFFFF);
 
-        if (slot_idx >= kMaxInflight) {
+        if (slot_idx >= max_inflight_) {
           spdlog::error("client: invalid slot_idx decoded: {}", slot_idx);
           continue;
         }
@@ -193,18 +187,13 @@ private:
 
         slot.actual_len = copy_len;
 
-        uintptr_t prev_waiter = slot.waiter.exchange(kRpcStatusCompleted);
-        if (prev_waiter != 0 && prev_waiter != kRpcStatusCompleted) {
-          auto h = std::coroutine_handle<>::from_address(
-              reinterpret_cast<void *>(prev_waiter));
-          h.resume();
-        } else if (prev_waiter == 0) {
-          // fastpath, no need to suspend for rpc response awaiter
-        } else {
-          spdlog::warn(
-              "client: received late or mismatch packet for req_id: {}",
-              recv_id);
-        }
+        uintptr_t w;
+        while ((w = slot.waiter.load()) == 0)
+          ;
+        auto h =
+            std::coroutine_handle<>::from_address(reinterpret_cast<void *>(w));
+        h.resume();
+
       } catch (const std::exception &e) {
         spdlog::error("client: recv worker error: {}", e.what());
         break;
@@ -218,9 +207,10 @@ class RpcClientMux {
   std::atomic<unsigned int> selector_;
 
 public:
-  RpcClientMux(std::vector<std::shared_ptr<rdmapp::qp>> qp) {
+  RpcClientMux(std::vector<std::shared_ptr<rdmapp::qp>> qp,
+               size_t recv_depth = 512) {
     for (auto q : qp) {
-      clients_.emplace_back(std::make_unique<RpcClient>(q));
+      clients_.emplace_back(std::make_unique<RpcClient>(q, recv_depth));
     }
   }
   cppcoro::task<size_t> call(std::span<const std::byte> req_data,
@@ -254,6 +244,7 @@ class RpcServer {
                                   std::span<std::byte> resp);
 
   Handler h_;
+  size_t recv_depth_;
   std::shared_ptr<rdmapp::qp> qp_;
   cppcoro::static_thread_pool tp_{4};
 
@@ -263,25 +254,27 @@ class RpcServer {
   rdmapp::local_mr send_mr_;
 
 public:
-  RpcServer(std::shared_ptr<rdmapp::qp> qp, Handler h = default_handler)
-      : h_(h), qp_(qp), recv_buffer_pool_(kRecvDepth * kSendBufferSize),
+  RpcServer(std::shared_ptr<rdmapp::qp> qp, size_t recv_depth = 1024,
+            Handler h = default_handler)
+      : h_(h), recv_depth_(recv_depth), qp_(qp),
+        recv_buffer_pool_(recv_depth_ * kSendBufferSize),
         recv_mr_(qp->pd_ptr()->reg_mr(recv_buffer_pool_.data(),
                                       recv_buffer_pool_.size())),
-        send_buffer_pool_(kRecvDepth * kRecvBufferSize),
+        send_buffer_pool_(recv_depth_ * kRecvBufferSize),
         send_mr_(qp->pd_ptr()->reg_mr(send_buffer_pool_.data(),
                                       send_buffer_pool_.size()))
 
   {
-    spdlog::info("server: initialized with {} concurrent workers", kRecvDepth);
+    spdlog::info("server: initialized with {} concurrent workers", recv_depth_);
   }
 
   // 入口：启动所有 Worker 并保持运行
   cppcoro::task<void> run() {
     std::vector<cppcoro::task<void>> workers;
-    workers.reserve(kRecvDepth);
+    workers.reserve(recv_depth_);
 
     // 启动 N 个并发循环，瞬间填满 RQ
-    for (size_t i = 0; i < kRecvDepth; ++i) {
+    for (size_t i = 0; i < recv_depth_; ++i) {
       workers.emplace_back(server_worker(i));
     }
 

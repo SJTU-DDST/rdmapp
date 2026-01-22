@@ -8,6 +8,8 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+#include "rdmapp/qp.h"
+
 namespace rdmapp {
 
 template <typename cq_poller_t>
@@ -21,7 +23,6 @@ template <typename cq_poller_t>
 std::shared_ptr<rdmapp::cq> basic_qp_connector<cq_poller_t>::alloc_cq() {
   auto cq = std::make_shared<rdmapp::cq>(pd_->device_ptr(), 512);
   pollers_.emplace_back(cq);
-  pollers_.emplace_back(cq);
   return cq;
 }
 
@@ -29,8 +30,10 @@ template <typename cq_poller_t>
 asio::awaitable<std::shared_ptr<rdmapp::qp>>
 basic_qp_connector<cq_poller_t>::from_socket(asio::ip::tcp::socket socket) {
   auto send_cq = alloc_cq();
-  auto recv_cq = alloc_cq();
-  auto qp_ptr = std::make_shared<rdmapp::qp>(this->pd_, recv_cq, send_cq);
+  auto recv_cq = send_cq;
+  auto qp_ptr = std::make_shared<rdmapp::qp>(
+      this->pd_, recv_cq, send_cq, srq_,
+      qp_config{.max_send_wr = 512, .max_recv_wr = 512});
   co_await send_qp(*qp_ptr, socket);
 
   auto remote_qp = co_await recv_qp(socket);
