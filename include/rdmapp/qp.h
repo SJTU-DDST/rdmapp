@@ -201,7 +201,7 @@ public:
       : public std::enable_shared_from_this<send_awaitable> {
     friend basic_qp;
     std::weak_ptr<basic_qp> qp_;
-    std::unique_ptr<local_mr> local_mr_ [[maybe_unused]];
+    std::unique_ptr<local_mr> local_mr_ ;
     mr_view local_mr_view_;
     mr_view remote_mr_view_;
     std::exception_ptr exception_;
@@ -293,7 +293,7 @@ public:
       -> detail::awaitable_return_t<CompletionToken, send_awaitable,
                                     send_result> {
     return send_awaitable{std::forward<Args>(args)...};
-  };
+  }
 
   /// The result type for receive operations: a pair of {bytes received,
   /// optional immediate data}.
@@ -353,7 +353,7 @@ public:
       -> detail::awaitable_return_t<CompletionToken, recv_awaitable,
                                     recv_result> {
     return recv_awaitable{std::forward<Args>(args)...};
-  };
+  }
 
   /**
    * @brief Constructs a new QP and connects it to a remote peer.

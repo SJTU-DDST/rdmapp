@@ -8,8 +8,8 @@
 #include <cassert>
 #include <memory>
 #include <span>
-#include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/fmt/std.h>
 #include <stop_token>
 #include <string>
 #include <thread>

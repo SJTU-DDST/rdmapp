@@ -40,7 +40,7 @@ task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
       co_await qp->recv(remote_mr_serialized, rdmapp::use_native_awaitable);
 
   assert(nbytes == rdmapp::remote_mr::kSerializedSize);
-  void(nbytes), void(_);
+  (void)nbytes;
 
   rdmapp::remote_mr remote_mr =
       rdmapp::remote_mr::deserialize(remote_mr_serialized.span().data());

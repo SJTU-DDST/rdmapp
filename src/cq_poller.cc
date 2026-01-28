@@ -20,7 +20,7 @@ requires ValidCompletionToken<CompletionToken>
 basic_cq_poller<CompletionToken>::basic_cq_poller(std::shared_ptr<cq> cq,
                                                   size_t batch_size)
     : wc_vec_(batch_size), cq_(std::move(cq)),
-      poller_thread_(&basic_cq_poller::worker, this) {}
+      poller_thread_(std::bind_front(&basic_cq_poller::worker, this)) {}
 
 template <typename CompletionToken>
 requires ValidCompletionToken<CompletionToken>

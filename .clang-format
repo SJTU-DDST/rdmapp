@@ -83,17 +83,23 @@ IfMacros:
   - KJ_IF_MAYBE
 IncludeBlocks:   Regroup
 IncludeCategories:
-  - Regex:           '^"(rdmapp)/(detail)'
-    Priority:        4
+  - Regex:           '^<spdlog/spdlog\.h>'
+    Priority:        -1
     CaseSensitive:   false
-  - Regex:           '^("|<)(rdmapp)/'
-    Priority:        3
+  - Regex:           '^<spdlog/fmt/'
+    Priority:        0
+    CaseSensitive:   false
+  - Regex:           '.*'
+    Priority:        1
     CaseSensitive:   false
   - Regex:           '^<(infiniband)/'
     Priority:        2
     CaseSensitive:   false
-  - Regex:           '.*'
-    Priority:        1
+  - Regex:           '^("|<)(rdmapp)/'
+    Priority:        3
+    CaseSensitive:   false
+  - Regex:           '^"(rdmapp)/(detail)'
+    Priority:        4
     CaseSensitive:   false
 IncludeIsMainRegex: '(Test)?$'
 IncludeIsMainSourceRegex: ''
