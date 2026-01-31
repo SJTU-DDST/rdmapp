@@ -97,36 +97,38 @@ Browse [`examples`](/examples) to learn more about this library.
 
 ## Building
 
-Requires: C++ compiler with C++20 standard support and `libibverbs` development headers, asio headers installed.
+Requires: C++ compiler with C++20 standard support and `libibverbs` development headers.
 
 ```bash
 git clone https://github.com/SJTU-DDST/rdmapp && cd rdmapp
-cmake -Bbuild -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR .
-# for shared library build, use -DRDMAPP_BUILD_PIC=ON
-# for pybind11, see examples, use -DRDMAPP_BUILD_EXAMPLES_PYBIND=ON
-# for no RTTI build, use -RDMAPP_BUILD_NORTTI=ON
-cmake --build build
+xmake
 ```
 
-## Using with cmake
+## Installation
 
-```cmake
-include(FetchContent)
+Add the following to your `xmake.lua`:
 
-set(RDMAPP_BUILD_PIC ON) # for shared library like pybind
-set(RDMAPP_BUILD_NORTTI OFF) # pybind11 needs RTTI
-set(RDMAPP_BUILD_EXAMPLES OFF) # for not building examples
+```lua
+package("rdmapp")
+    set_description("The rdmapp package")
+    add_deps("ibverbs", {system=true})
+    add_deps("pthread", {system=true})
+    add_deps("spdlog 1.16.0", {private=true, configs={header_only=true}})
 
-fetchcontent_declare(
-  rdmapp
-  GIT_REPOSITORY https://github.com/SJTU-DDST/rdmapp.git
-  GIT_TAG asio-coro
-  GIT_SHALLOW 1
-)
+    add_versions("0.1.0", "3fd96287f00cbdef07defb4b836d84ef09679ceb")
 
-fetchcontent_makeavailable(rdmapp)
-
-target_link_libraries(your_target PUBLIC rdmapp)
+    add_urls("https://github.com/SJTU-DDST/rdmapp.git")
+    on_install(function (package)
+        local configs = {}
+        if package:config("shared") then
+            configs.kind = "shared"
+        end
+        configs.pic = true
+        configs.nortti = false
+        configs.examples = false
+        configs.asio_coro = true
+        import("package.tools.xmake").install(package, configs)
+    end)
 ```
 
 ## Developing
