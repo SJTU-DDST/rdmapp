@@ -1,13 +1,6 @@
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
-set_version("0.1.0")
-
-package("cppcoro")
-    set_urls("https://github.com/andreasbuhr/cppcoro.git")
-    on_install("linux", function(package)
-        local configs = {}
-        import("package.tools.cmake").install(package, configs)
-    end)
+add_repositories("ddst-xrepo https://github.com/SJTU-DDST/xmake-repo.git")
 
 option("docs", {default = false, description = "Build docs"})
 option("asio_coro", {default = true, description = "Support Asio Coroutine"})
@@ -26,7 +19,7 @@ end
 
 add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
 if has_config("examples") then
-    add_requires("cppcoro main", { private = true })
+    add_requires("cppcoro-20", { private = true })
     add_requires("concurrentqueue", { private = true })
 end
 
@@ -100,7 +93,7 @@ if has_config("examples") then
             set_kind("binary")
             add_files("examples/" .. name .. ".cc")
             add_deps("rdmapp_examples_lib")
-            add_packages("cppcoro", "concurrentqueue")
+            add_packages("cppcoro-20", "concurrentqueue")
     end
 
     if has_config("examples_pybind") then
