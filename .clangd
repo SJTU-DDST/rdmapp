@@ -1,5 +1,4 @@
 CompileFlags:
-  CompilationDatabase: "build/debug"
   Add:
     - "-I/usr/lib/gcc/x86_64-linux-gnu/11/include"
     - "-I/usr/lib/gcc/x86_64-linux-gnu/12/include"
