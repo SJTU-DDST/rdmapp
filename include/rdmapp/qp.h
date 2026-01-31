@@ -2,8 +2,11 @@
 #ifndef RDAMPP_QP_HPP__
 #define RDAMPP_QP_HPP__
 
+#ifdef RDMAPP_ASIO_COROUTINE
 #include <asio/awaitable.hpp>
+#endif
 #include <atomic>
+#include <cassert>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
@@ -99,9 +102,14 @@ namespace detail {
  * @tparam Result The result type of the asynchronous operation.
  */
 template <typename Token, typename Awaitable, typename Result>
-using awaitable_return_t = std::conditional_t<
-    std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
-    asio::awaitable<Result>, Awaitable>;
+using awaitable_return_t =
+#ifdef RDMAPP_ASIO_COROUTINE
+    std::conditional_t<
+        std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
+        asio::awaitable<Result>, Awaitable>;
+#else
+    Awaitable;
+#endif
 
 /**
  * @brief A helper function to cast away the constness from a `std::span`.
@@ -266,9 +274,11 @@ public:
     /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
 
+#ifdef RDMAPP_ASIO_COROUTINE
     /// @brief Implicitly converts the object to an `asio::awaitable` for use in
     /// Asio coroutines.
     [[nodiscard]] operator asio::awaitable<send_result>() &&;
+#endif
 
     /// @brief Checks if the operation is an RDMA operation (read or write).
     constexpr bool is_rdma() const;
@@ -331,9 +341,11 @@ public:
     /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
 
+#ifdef RDMAPP_ASIO_COROUTINE
     /// @brief Implicitly converts the object to an `asio::awaitable` for use in
     /// Asio coroutines.
     [[nodiscard]] operator asio::awaitable<recv_result>() &&;
+#endif
   };
 
   /**

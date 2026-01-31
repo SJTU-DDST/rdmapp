@@ -1,11 +1,13 @@
 #include "rdmapp/qp.h"
 
 #include <algorithm>
+#ifdef RDMAPP_ASIO_COROUTINE
 #include <asio/awaitable.hpp>
 #include <asio/cancellation_signal.hpp>
 #include <asio/cancellation_type.hpp>
 #include <asio/compose.hpp>
 #include <asio/use_awaitable.hpp>
+#endif
 #include <atomic>
 #include <cassert>
 #include <cerrno>
@@ -465,6 +467,7 @@ int main() {
 }
 */
 
+#ifdef RDMAPP_ASIO_COROUTINE
 static auto complete(auto &&self, auto &&awaitable) noexcept {
   self->complete(awaitable->unhandled_exception(), awaitable->resume());
 }
@@ -557,6 +560,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
       },
       asio::use_awaitable);
 }
+#endif
 
 basic_qp::recv_awaitable::recv_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer)

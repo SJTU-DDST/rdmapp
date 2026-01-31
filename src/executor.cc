@@ -25,6 +25,7 @@ void execute_callback<use_native_awaitable_t>(
   state->resume();
 }
 
+#ifdef RDMAPP_ASIO_COROUTINE
 template <>
 void execute_callback<use_asio_awaitable_t>(struct ibv_wc const &wc) noexcept {
 #ifdef RDMAPP_BUILD_DEBUG
@@ -42,6 +43,7 @@ void execute_callback<use_asio_awaitable_t>(struct ibv_wc const &wc) noexcept {
              wc.wr_id);
 #endif
 }
+#endif
 
 void destroy_callback(callback_ptr cb) noexcept {
 #ifdef RDMAPP_BUILD_DEBUG
@@ -63,8 +65,10 @@ void basic_executor::process_wc(std::span<struct ibv_wc> const wc) noexcept {
 
 basic_executor::~basic_executor() noexcept {}
 
+#ifdef RDMAPP_ASIO_COROUTINE
 template void basic_executor::process_wc<use_asio_awaitable_t>(
     std::span<struct ibv_wc>) noexcept;
+#endif
 template void basic_executor::process_wc<use_native_awaitable_t>(
     std::span<struct ibv_wc>) noexcept;
 

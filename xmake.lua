@@ -10,6 +10,7 @@ package("cppcoro")
     end)
 
 option("docs", {default = false, description = "Build docs"})
+option("asio_coro", {default = true, description = "Support Asio Coroutine"})
 option("examples", {default = true, description = "Build examples"})
 option("examples_pybind", {default = false, description = "Build pybind11 example"})
 option("nortti", {default = true, description = "Build without RTTI"})
@@ -18,7 +19,11 @@ option("pic", {default = false, description = "Build with -fPIC for shared libra
 
 add_requires("ibverbs", { system = true })
 add_requires("pthread", { system = true })
-add_requires("asio 1.36.0")
+if has_config("asio_coro") then
+    add_requires("asio 1.36.0", { private = true })
+    add_defines("RDMAPP_ASIO_COROUTINE", { public = true })
+end
+
 add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
 if has_config("examples") then
     add_requires("cppcoro main", { private = true })
@@ -61,22 +66,27 @@ target("rdmapp")
     add_includedirs("include", { public = true })
     local source_path_len = #os.projectdir() + 1
     add_defines("SOURCE_PATH_LENGTH=" .. source_path_len)
-    add_packages("ibverbs", "pthread", "asio", { public = true })
+    add_packages("ibverbs", "pthread", { public = true })
+    if has_config("asio_coro") then
+        add_packages("asio", { public = true })
+    end
     add_packages("spdlog", { private = true })
-    if is_mode("debug") then
+    if is_mode("debug") or is_mode("check") then
         add_defines("RDMAPP_BUILD_DEBUG", { public = true })
     end
     set_pic();
     set_rtti();
     add_headerfiles("include/(rdmapp/**.h)")
+target_end()
 
 if has_config("examples") then
+    add_requires("asio 1.36.0", { private = true })
     target("rdmapp_examples_lib")
         set_rtti()
         set_pic()
         set_kind("static")
         add_deps("rdmapp", { public = true })
-        add_packages("spdlog", { public = true })
+        add_packages("spdlog", "asio", { public = true })
         add_files("examples/qp_transmission.cc",
                   "examples/qp_acceptor.cc",
                   "examples/qp_connector.cc",

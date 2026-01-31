@@ -36,7 +36,11 @@ public:
   ~basic_cq_poller();
 };
 
+#ifdef RDMAPP_ASIO_COROUTINE
 using cq_poller = basic_cq_poller<use_asio_awaitable_t>;
+#else
+using cq_poller = basic_cq_poller<use_native_awaitable_t>;
+#endif
 
 using native_cq_poller = basic_cq_poller<use_native_awaitable_t>;
 

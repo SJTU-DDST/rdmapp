@@ -47,7 +47,9 @@ void basic_cq_poller<CompletionToken>::worker(std::stop_token token) {
              std::this_thread::get_id());
 }
 
+#ifdef RDMAPP_ASIO_COROUTINE
 template class basic_cq_poller<use_asio_awaitable_t>;
+#endif
 template class basic_cq_poller<use_native_awaitable_t>;
 
 } // namespace rdmapp
