@@ -109,26 +109,8 @@ xmake
 Add the following to your `xmake.lua`:
 
 ```lua
-package("rdmapp")
-    set_description("The rdmapp package")
-    add_deps("ibverbs", {system=true})
-    add_deps("pthread", {system=true})
-    add_deps("spdlog 1.16.0", {private=true, configs={header_only=true}})
-
-    add_versions("0.1.0", "3fd96287f00cbdef07defb4b836d84ef09679ceb")
-
-    add_urls("https://github.com/SJTU-DDST/rdmapp.git")
-    on_install(function (package)
-        local configs = {}
-        if package:config("shared") then
-            configs.kind = "shared"
-        end
-        configs.pic = true
-        configs.nortti = false
-        configs.examples = false
-        configs.asio_coro = true
-        import("package.tools.xmake").install(package, configs)
-    end)
+add_repositories("ddst-xrepo https://github.com/SJTU-DDST/xmake-repo.git")
+add_requires("rdmapp 0.1.0", {public=true,configs={examples=false, asio_coro=false, pic=true, nortti=false}})
 ```
 
 ## Developing
