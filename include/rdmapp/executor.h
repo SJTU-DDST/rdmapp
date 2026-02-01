@@ -1,14 +1,12 @@
 #pragma once
 
+#include "rdmapp/completion_token.h"
 #include <functional>
+#include <infiniband/verbs.h>
 #include <new>
 #include <span>
 #include <stdexcept>
 #include <utility>
-
-#include <infiniband/verbs.h>
-
-#include "rdmapp/completion_token.h"
 
 #ifdef RDMAPP_BUILD_DEBUG
 #include "rdmapp/detail/logger.h"
@@ -35,7 +33,7 @@ using callback_ptr = callback_fn *;
 template <class T> static callback_ptr make_callback(T &&cb) {
   auto ptr = new (std::nothrow) callback_fn(std::forward<T>(cb));
 #ifdef RDMAPP_BUILD_DEBUG
-  log::trace("executor: make_callback: {}", fmt::ptr(ptr));
+  log::trace("executor: make_callback: {}", log::fmt::ptr(ptr));
 #endif
   if (!ptr) [[unlikely]] {
 #ifdef RDMAPP_BUILD_DEBUG

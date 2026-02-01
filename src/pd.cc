@@ -15,7 +15,7 @@ namespace rdmapp {
 pd::pd(std::shared_ptr<rdmapp::device> device) : device_(device) {
   pd_ = ::ibv_alloc_pd(device->ctx_);
   check_ptr(pd_, "failed to alloc pd");
-  log::trace("alloc pd {}", fmt::ptr(pd_));
+  log::trace("alloc pd {}", log::fmt::ptr(pd_));
 }
 
 std::shared_ptr<device> pd::device_ptr() const { return device_; }
@@ -31,9 +31,9 @@ pd::~pd() {
     return;
   }
   if (auto rc = ::ibv_dealloc_pd(pd_); rc != 0) [[unlikely]] {
-    log::error("failed to dealloc pd {}: {}", fmt::ptr(pd_), strerror(errno));
+    log::error("failed to dealloc pd {}: {}", log::fmt::ptr(pd_), strerror(errno));
   } else {
-    log::trace("dealloc pd {}", fmt::ptr(pd_));
+    log::trace("dealloc pd {}", log::fmt::ptr(pd_));
   }
 }
 

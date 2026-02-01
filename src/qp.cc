@@ -8,12 +8,20 @@
 #include <asio/compose.hpp>
 #include <asio/use_awaitable.hpp>
 #endif
+#include "rdmapp/detail/logger.h"
+#include "rdmapp/detail/serdes.h"
+#include "rdmapp/error.h"
+#include "rdmapp/executor.h"
+#include "rdmapp/mr.h"
+#include "rdmapp/pd.h"
+#include "rdmapp/srq.h"
 #include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <infiniband/verbs.h>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -21,17 +29,6 @@
 #include <strings.h>
 #include <utility>
 #include <vector>
-
-#include <infiniband/verbs.h>
-
-#include "rdmapp/error.h"
-#include "rdmapp/executor.h"
-#include "rdmapp/mr.h"
-#include "rdmapp/pd.h"
-#include "rdmapp/srq.h"
-
-#include "rdmapp/detail/logger.h"
-#include "rdmapp/detail/serdes.h"
 
 namespace rdmapp {
 
@@ -84,7 +81,7 @@ std::vector<std::byte> basic_qp::serialize() const {
 }
 
 void basic_qp::create() {
-  struct ibv_qp_init_attr qp_init_attr {};
+  struct ibv_qp_init_attr qp_init_attr{};
   qp_init_attr.qp_type = IBV_QPT_RC;
   qp_init_attr.recv_cq = recv_cq_->cq_;
   qp_init_attr.send_cq = send_cq_->cq_;
@@ -106,7 +103,7 @@ void basic_qp::create() {
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
   check_ptr(qp_, "failed to create qp");
   sq_psn_ = next_sq_psn.fetch_add(1);
-  log::trace("created qp {} lid={} qpn={} psn={}", fmt::ptr(qp_),
+  log::trace("created qp {} lid={} qpn={} psn={}", log::fmt::ptr(qp_),
              pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
@@ -205,9 +202,11 @@ void basic_qp::post_recv(struct ibv_recv_wr const &recv_wr,
 
 void basic_qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
                             struct ibv_recv_wr *&bad_recv_wr) const {
+#ifdef RDMAPP_BUILD_DEBUG
   log::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
-             fmt::ptr(recv_wr.sg_list),
+             log::fmt::ptr(recv_wr.sg_list),
              recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
+#endif
   check_rc(::ibv_post_recv(qp_, const_cast<struct ibv_recv_wr *>(&recv_wr),
                            &bad_recv_wr),
            "failed to post recv");
@@ -494,7 +493,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
           executor_t::destroy_callback(callback);
         }
         log::trace("send_awaitable: suspended: callback={}",
-                   fmt::ptr(callback));
+                   log::fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
@@ -505,7 +504,8 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
   return asio::async_compose<decltype(asio::use_awaitable),
                              void(std::exception_ptr, recv_result)>(
       [awaitable = awaitable_ptr](auto &&self) mutable {
-        log::trace("recv_awaitable({}): fn start", fmt::ptr(awaitable.get()));
+        log::trace("recv_awaitable({}): fn start",
+                   log::fmt::ptr(awaitable.get()));
 
         std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
         auto complete_called = std::make_shared<std::atomic_flag>();
@@ -515,7 +515,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
         if (asio::cancellation_slot slot = self_ptr->get_cancellation_slot();
             slot.is_connected()) {
           log::trace("recv_awaitable({}): connected to cancellation_slot",
-                     fmt::ptr(awaitable_ptr.get()));
+                     log::fmt::ptr(awaitable_ptr.get()));
           slot.assign([complete_called, awaitable = awaitable_ptr,
                        self_ptr_view = std::weak_ptr(self_ptr)](
                           asio::cancellation_type type) mutable {
@@ -526,7 +526,8 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
               return;
             }
             if (auto self_ptr = self_ptr_view.lock(); self_ptr) {
-              log::warn("recv: cancelled by signal", fmt::ptr(awaitable.get()));
+              log::warn("recv: cancelled by signal",
+                        log::fmt::ptr(awaitable.get()));
               std::exception_ptr ex = std::make_exception_ptr(
                   asio::system_error(asio::error::operation_aborted));
               self_ptr->complete(ex, recv_result{}); // empty result
@@ -535,7 +536,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
             log::debug(
                 "recv_awaitable({}): cancelled by signal, but recv done, "
                 "skipped",
-                fmt::ptr(awaitable.get()));
+                log::fmt::ptr(awaitable.get()));
           });
         }
 
@@ -547,7 +548,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
                 complete(self, awaitable);
               } else {
                 log::debug("recv_awaitable({}): resumed by cancellation",
-                           fmt::ptr(awaitable.get()));
+                           log::fmt::ptr(awaitable.get()));
               }
             });
 
@@ -556,7 +557,7 @@ basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
           executor_t::destroy_callback(callback);
         }
         log::trace("recv_awaitable({}): suspended: callback={}",
-                   fmt::ptr(awaitable_ptr.get()), fmt::ptr(callback));
+                   log::fmt::ptr(awaitable_ptr.get()), log::fmt::ptr(callback));
       },
       asio::use_awaitable);
 }
@@ -637,21 +638,22 @@ void basic_qp::destroy() {
   }
   err();
   if (auto rc = ::ibv_destroy_qp(qp_); rc != 0) [[unlikely]] {
-    log::error("failed to destroy qp {}: {}", fmt::ptr(qp_), strerror(errno));
+    log::error("failed to destroy qp {}: {}", log::fmt::ptr(qp_),
+               strerror(errno));
   } else {
-    log::trace("destroyed qp {}", fmt::ptr(qp_));
+    log::trace("destroyed qp {}", log::fmt::ptr(qp_));
   }
 }
 
 void basic_qp::err() {
-  struct ibv_qp_attr attr {};
+  struct ibv_qp_attr attr{};
   attr.qp_state = IBV_QPS_ERR;
 
   if (ibv_modify_qp(qp_, &attr, IBV_QP_STATE)) {
-    log::error("failed to modify qp({}) to ERROR, error: {}\n", fmt::ptr(qp_),
-               strerror(errno));
+    log::error("failed to modify qp({}) to ERROR, error: {}\n",
+               log::fmt::ptr(qp_), strerror(errno));
   } else {
-    log::trace("qp({}) set to ERORR", fmt::ptr(qp_));
+    log::trace("qp({}) set to ERORR", log::fmt::ptr(qp_));
   }
 }
 

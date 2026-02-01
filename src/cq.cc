@@ -1,16 +1,14 @@
 #include "rdmapp/cq.h"
 
+#include "rdmapp/detail/logger.h"
+#include "rdmapp/error.h"
 #include <cassert>
 #include <cstring>
+#include <infiniband/verbs.h>
 #include <vector>
 
-#include <infiniband/verbs.h>
-
-#include "rdmapp/error.h"
-
-#include "rdmapp/detail/logger.h"
-
 namespace rdmapp {
+using namespace log;
 
 cq::cq(std::shared_ptr<device> device, size_t nr_cqe) : device_(device) {
   cq_ = ::ibv_create_cq(device->ctx_, nr_cqe, this, nullptr, 0);

@@ -1,16 +1,13 @@
 #include "rdmapp/mr.h"
 
+#include "rdmapp/detail/logger.h"
+#include "rdmapp/detail/serdes.h"
 #include <cstdint>
+#include <infiniband/verbs.h>
 #include <utility>
 #include <vector>
 
-#include <infiniband/verbs.h>
-
-#include "rdmapp/detail/logger.h"
-#include "rdmapp/detail/serdes.h"
-
 namespace rdmapp {
-
 local_mr::mr(std::shared_ptr<pd> pd, struct ibv_mr *mr) : mr_(mr), pd_(pd) {}
 
 local_mr::mr(local_mr &&other)
@@ -30,9 +27,10 @@ local_mr::~mr() {
   }
   auto addr = mr_->addr;
   if (auto rc = ::ibv_dereg_mr(mr_); rc != 0) [[unlikely]] {
-    log::error("failed to dereg mr {} addr={}", fmt::ptr(mr_), fmt::ptr(addr));
+    log::error("failed to dereg mr {} addr={}", log::fmt::ptr(mr_),
+               log::fmt::ptr(addr));
   } else {
-    log::trace("dereg mr {} addr={}", fmt::ptr(mr_), fmt::ptr(addr));
+    log::trace("dereg mr {} addr={}", log::fmt::ptr(mr_), log::fmt::ptr(addr));
   }
 }
 

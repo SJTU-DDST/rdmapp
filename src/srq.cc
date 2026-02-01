@@ -1,16 +1,14 @@
 #include "rdmapp/srq.h"
 
-#include <cstring>
-#include <memory>
-
-#include <infiniband/verbs.h>
-
+#include "rdmapp/detail/logger.h"
 #include "rdmapp/device.h"
 #include "rdmapp/error.h"
-
-#include "rdmapp/detail/logger.h"
+#include <cstring>
+#include <infiniband/verbs.h>
+#include <memory>
 
 namespace rdmapp {
+using namespace log;
 
 srq::srq(std::shared_ptr<pd> pd, size_t max_wr) : srq_(nullptr), pd_(pd) {
   struct ibv_srq_init_attr srq_init_attr;

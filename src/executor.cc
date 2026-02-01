@@ -1,12 +1,9 @@
 #include "rdmapp/executor.h"
 
-#include <spdlog/fmt/std.h>
-#include <thread>
-
 #include "rdmapp/completion_token.h"
-#include "rdmapp/qp.h"
-
 #include "rdmapp/detail/logger.h"
+#include "rdmapp/qp.h"
+#include <thread>
 
 namespace rdmapp {
 
@@ -47,7 +44,7 @@ void execute_callback<use_asio_awaitable_t>(struct ibv_wc const &wc) noexcept {
 
 void destroy_callback(callback_ptr cb) noexcept {
 #ifdef RDMAPP_BUILD_DEBUG
-  log::trace("executor: delete_callback: {}", fmt::ptr(cb));
+  log::trace("executor: delete_callback: {}", log::fmt::ptr(cb));
 #endif
   delete cb;
 }

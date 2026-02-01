@@ -1,7 +1,7 @@
 #include "rdmapp/cq_poller.h"
 
 #include <memory>
-#include <spdlog/fmt/std.h>
+#include <thread>
 #include <stdexcept>
 #include <stop_token>
 #include <thread>

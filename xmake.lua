@@ -17,8 +17,8 @@ if has_config("asio_coro") then
     add_defines("RDMAPP_ASIO_COROUTINE", { public = true })
 end
 
-add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
 if has_config("examples") then
+    add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
     add_requires("cppcoro-20", { private = true })
     add_requires("concurrentqueue", { private = true })
 end
@@ -63,7 +63,6 @@ target("rdmapp")
     if has_config("asio_coro") then
         add_packages("asio", { public = true })
     end
-    add_packages("spdlog", { private = true })
     if is_mode("debug") or is_mode("check") then
         add_defines("RDMAPP_BUILD_DEBUG", { public = true })
     end
