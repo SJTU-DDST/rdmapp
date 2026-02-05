@@ -20,8 +20,9 @@ end
 if has_config("examples") then
     add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
     add_requires("cppcoro-20", { private = true })
-    add_requires("concurrentqueue", { private = true })
 end
+
+add_requires("concurrentqueue", { private = true })
 
 -- helder functions
 function has_pybind() 
@@ -60,6 +61,7 @@ target("rdmapp")
     local source_path_len = #os.projectdir() + 1
     add_defines("SOURCE_PATH_LENGTH=" .. source_path_len)
     add_packages("ibverbs", "pthread", { public = true })
+    add_packages("concurrentqueue")
     if has_config("asio_coro") then
         add_packages("asio", { public = true })
     end
