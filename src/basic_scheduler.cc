@@ -59,6 +59,6 @@ auto basic_scheduler::schedule(std::span<std::coroutine_handle<>> h) noexcept
   impl_->schedule(h);
 }
 
-basic_scheduler::~basic_scheduler() = default;
+basic_scheduler::~basic_scheduler() { stop(); };
 
 } // namespace rdmapp

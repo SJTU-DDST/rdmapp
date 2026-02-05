@@ -3,7 +3,6 @@ add_rules("mode.debug", "mode.release", "mode.releasedbg")
 add_repositories("ddst-xrepo https://github.com/SJTU-DDST/xmake-repo.git")
 
 option("docs", {default = false, description = "Build docs"})
-option("asio_coro", {default = true, description = "Support Asio Coroutine"})
 option("examples", {default = true, description = "Build examples"})
 option("examples_pybind", {default = false, description = "Build pybind11 example"})
 option("nortti", {default = true, description = "Build without RTTI"})
@@ -12,10 +11,7 @@ option("pic", {default = false, description = "Build with -fPIC for shared libra
 
 add_requires("ibverbs", { system = true })
 add_requires("pthread", { system = true })
-if has_config("asio_coro") then
-    add_requires("asio 1.36.0", { private = true })
-    add_defines("RDMAPP_ASIO_COROUTINE", { public = true })
-end
+
 
 if has_config("examples") then
     add_requires("spdlog 1.16.0", { private = true, configs = { header_only = true } })
@@ -32,7 +28,6 @@ function set_rtti()
     local enable = has_config("nortti") and not has_pybind()
     if enable then
         add_cxxflags("-fno-rtti", { public = true })
-        add_defines("ASIO_NO_TYPEID", { public = true }) -- disable for asio
     end
 end
 function set_pic()
@@ -62,9 +57,6 @@ target("rdmapp")
     add_defines("SOURCE_PATH_LENGTH=" .. source_path_len)
     add_packages("ibverbs", "pthread", { public = true })
     add_packages("concurrentqueue")
-    if has_config("asio_coro") then
-        add_packages("asio", { public = true })
-    end
     if is_mode("debug") or is_mode("check") then
         add_defines("RDMAPP_BUILD_DEBUG", { public = true })
     end
@@ -74,21 +66,19 @@ target("rdmapp")
 target_end()
 
 if has_config("examples") then
-    add_requires("asio 1.36.0", { private = true })
     target("rdmapp_examples_lib")
         set_rtti()
         set_pic()
         set_kind("static")
         add_deps("rdmapp", { public = true })
-        add_packages("spdlog", "asio", { public = true })
+        add_packages("spdlog", "cppcoro-20", { public = true }) -- Added cppcoro-20
         add_files("examples/qp_transmission.cc",
                   "examples/qp_acceptor.cc",
                   "examples/qp_connector.cc",
                   "examples/helloworld_handler.cc")
         add_includedirs("examples/include", { public = true })
 
-    local examples = {"helloworld", "write_bw", "rpc", "cancellation", "latency", 
-                      "latency_raw", "async_rpc", "send_bw_raw"}
+    local examples = {"helloworld", "latency", "send_bw"}
     for _, name in ipairs(examples) do
         target(name)
             set_kind("binary")

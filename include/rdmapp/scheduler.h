@@ -8,7 +8,7 @@ namespace rdmapp {
 
 struct scheduler {
 
-  virtual ~scheduler();
+  virtual ~scheduler() = default;
 
   virtual auto run() -> void = 0;
 

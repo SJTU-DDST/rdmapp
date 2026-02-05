@@ -1,17 +1,8 @@
 #include "rdmapp/qp.h"
 
-#include <algorithm>
-#ifdef RDMAPP_ASIO_COROUTINE
-#include <asio/awaitable.hpp>
-#include <asio/cancellation_signal.hpp>
-#include <asio/cancellation_type.hpp>
-#include <asio/compose.hpp>
-#include <asio/use_awaitable.hpp>
-#endif
 #include "rdmapp/detail/logger.h"
 #include "rdmapp/detail/serdes.h"
 #include "rdmapp/error.h"
-#include "rdmapp/executor.h"
 #include "rdmapp/mr.h"
 #include "rdmapp/pd.h"
 #include "rdmapp/srq.h"
@@ -432,136 +423,6 @@ uint32_t basic_qp::send_awaitable::await_resume() const {
   }
   return resume();
 }
-/*
-NOTE: 小心对于self的move
-
-#include <asio.hpp>
-#include <future>
-#include <thread>
-
-asio::io_context io_context(1);
-
-auto f2(std::shared_ptr<int> ptr) {
-  printf("1. ptr: %ld\n", ptr.use_count()); // 1
-  return asio::async_compose<decltype(asio::use_awaitable), void()>(
-      [ptr](auto &&self) {
-        auto ptr0 = ptr;
-        std::weak_ptr<int> ptrw = ptr;
-        printf("2. ptr: %ld\n", ptr.use_count()); // 3
-        std::thread([self = std::move(self)]() mutable {
-          self.complete();
-        }).detach();
-
-        printf("3. ptr: %ld\n", ptr.use_count()); // 0
-      },
-      asio::use_awaitable);
-}
-
-asio::awaitable<void> f1() { co_await f2(std::make_shared<int>()); }
-
-int main() {
-  co_spawn(io_context, f1, asio::detached);
-
-  io_context.run();
-}
-*/
-
-#ifdef RDMAPP_ASIO_COROUTINE
-static auto complete(auto &&self, auto &&awaitable) noexcept {
-  self->complete(awaitable->unhandled_exception(), awaitable->resume());
-}
-
-basic_qp::send_awaitable::operator asio::awaitable<send_result>() && {
-  std::shared_ptr<send_awaitable> awaitable_ptr =
-      std::make_shared<send_awaitable>(std::move(*this));
-  return asio::async_compose<decltype(asio::use_awaitable),
-                             void(std::exception_ptr, send_result)>(
-      [awaitable = awaitable_ptr](auto &&self) mutable {
-        std::shared_ptr<send_awaitable> awaitable_ptr = awaitable;
-        auto self_ptr =
-            std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
-
-        auto callback = executor_t::make_callback(
-            [awaitable = awaitable_ptr,
-             self = self_ptr](struct ibv_wc const &wc) mutable noexcept {
-              awaitable->state_.set_from_wc(wc);
-              complete(self, awaitable);
-            });
-
-        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
-          log::error("send_awaitable: fail to suspend, destroy callback");
-          executor_t::destroy_callback(callback);
-        }
-        log::trace("send_awaitable: suspended: callback={}",
-                   log::fmt::ptr(callback));
-      },
-      asio::use_awaitable);
-}
-
-[[nodiscard]] basic_qp::recv_awaitable::operator asio::awaitable<recv_result>()
-    && {
-  auto awaitable_ptr = std::make_shared<recv_awaitable>(std::move(*this));
-  return asio::async_compose<decltype(asio::use_awaitable),
-                             void(std::exception_ptr, recv_result)>(
-      [awaitable = awaitable_ptr](auto &&self) mutable {
-        log::trace("recv_awaitable({}): fn start",
-                   log::fmt::ptr(awaitable.get()));
-
-        std::shared_ptr<recv_awaitable> awaitable_ptr = awaitable;
-        auto complete_called = std::make_shared<std::atomic_flag>();
-        auto self_ptr =
-            std::make_shared<std::decay_t<decltype(self)>>(std::move(self));
-
-        if (asio::cancellation_slot slot = self_ptr->get_cancellation_slot();
-            slot.is_connected()) {
-          log::trace("recv_awaitable({}): connected to cancellation_slot",
-                     log::fmt::ptr(awaitable_ptr.get()));
-          slot.assign([complete_called, awaitable = awaitable_ptr,
-                       self_ptr_view = std::weak_ptr(self_ptr)](
-                          asio::cancellation_type type) mutable {
-            if (type == asio::cancellation_type::none) {
-              return;
-            }
-            if (complete_called->test_and_set(std::memory_order_relaxed)) {
-              return;
-            }
-            if (auto self_ptr = self_ptr_view.lock(); self_ptr) {
-              log::warn("recv: cancelled by signal",
-                        log::fmt::ptr(awaitable.get()));
-              std::exception_ptr ex = std::make_exception_ptr(
-                  asio::system_error(asio::error::operation_aborted));
-              self_ptr->complete(ex, recv_result{}); // empty result
-              return;
-            }
-            log::debug(
-                "recv_awaitable({}): cancelled by signal, but recv done, "
-                "skipped",
-                log::fmt::ptr(awaitable.get()));
-          });
-        }
-
-        auto callback = executor_t::make_callback(
-            [self = self_ptr, awaitable = awaitable_ptr,
-             complete_called](struct ibv_wc const &wc) mutable noexcept {
-              if (!complete_called->test_and_set(std::memory_order_relaxed)) {
-                awaitable->state_.set_from_wc(wc);
-                complete(self, awaitable);
-              } else {
-                log::debug("recv_awaitable({}): resumed by cancellation",
-                           log::fmt::ptr(awaitable.get()));
-              }
-            });
-
-        if (!awaitable_ptr->suspend(reinterpret_cast<uintptr_t>(callback))) {
-          log::error("recv_awaitable: suspend error, destroy callback");
-          executor_t::destroy_callback(callback);
-        }
-        log::trace("recv_awaitable({}): suspended: callback={}",
-                   log::fmt::ptr(awaitable_ptr.get()), log::fmt::ptr(callback));
-      },
-      asio::use_awaitable);
-}
-#endif
 
 basic_qp::recv_awaitable::recv_awaitable(std::shared_ptr<basic_qp> qp,
                                          std::span<std::byte> buffer)

@@ -1,15 +1,15 @@
+#include <spdlog/spdlog.h>
+
 #include "qp_acceptor.h"
 #include "qp_connector.h"
-#include <asio/co_spawn.hpp>
-#include <asio/io_context.hpp>
-#include <asio/use_future.hpp>
+#include <cppcoro/io_service.hpp>
+#include <cppcoro/net/socket.hpp>
 #include <cppcoro/sync_wait.hpp>
 #include <cppcoro/task.hpp>
 #include <cppcoro/when_all.hpp>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <spdlog/spdlog.h>
-
 #include <rdmapp/completion_token.h>
 #include <rdmapp/cq_poller.h>
 #include <rdmapp/log.h>
@@ -127,7 +127,9 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp) {
                static_cast<double>(total_duration.count()) / kSendCount);
 }
 
-cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
+cppcoro::task<void> client(auto &connector, std::string_view hostname,
+                           uint16_t port) {
+  auto qp = co_await connector.connect(hostname, port);
   std::vector<cppcoro::task<void>> tasks;
   for (int i = 0; i < kConcurrency; i++) {
     tasks.emplace_back(send_worker(i, qp));
@@ -138,24 +140,11 @@ cppcoro::task<void> run_client(std::shared_ptr<rdmapp::qp> qp) {
   co_return;
 }
 
-void client(rdmapp::native_qp_connector &connector) {
-  asio::io_context io_ctx(1);
-  std::jthread w([&io_ctx]() { io_ctx.run(); });
-  auto qp_fut = asio::co_spawn(io_ctx, connector.connect(), asio::use_future);
-  io_ctx.run();
-  cppcoro::sync_wait(run_client(qp_fut.get()));
-}
-
-void server(asio::io_context &io_ctx, rdmapp::native_qp_acceptor &acceptor) {
+cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor) {
   spdlog::info("server waiting for connection...");
-
-  auto guard = asio::make_work_guard(io_ctx);
-  std::jthread w([&io_ctx]() { io_ctx.run(); });
-  auto qp = asio::co_spawn(io_ctx, acceptor.accept(), asio::use_future).get();
-  guard.reset();
-
+  auto qp = co_await acceptor.accept();
   Server server(qp);
-  cppcoro::sync_wait(server.run());
+  co_await server.run();
 }
 
 int main(int argc, char *argv[]) {
@@ -169,29 +158,35 @@ int main(int argc, char *argv[]) {
   auto device = std::make_shared<rdmapp::device>(1, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
 
+  auto io_service = cppcoro::io_service(1);
+  auto scheduler = std::make_shared<rdmapp::basic_scheduler>();
+  std::jthread w([&]() { io_service.process_events(); });
+  std::jthread s([=]() { scheduler->run(); });
+
   switch (argc) {
   case 2: {
     uint16_t port = (uint16_t)std::stoi(argv[1]);
-    auto io_ctx = std::make_shared<asio::io_context>(1);
-    auto acceptor = rdmapp::native_qp_acceptor(io_ctx, port, pd);
-    server(*io_ctx, acceptor);
+    auto acceptor = rdmapp::qp_acceptor(io_service, scheduler, port, pd);
+    cppcoro::sync_wait(server(acceptor));
     break;
   }
 
   case 3: {
-    auto connector =
-        rdmapp::native_qp_connector(argv[1], std::stoi(argv[2]), pd);
-    client(connector);
-    spdlog::info("client exit after communicated with {}:{}", argv[1], argv[2]);
+    uint16_t port = (uint16_t)std::stoi(argv[2]);
+    std::string_view hostname = argv[1];
+    auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
+    cppcoro::sync_wait(client(connector, hostname, port));
+    spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }
 
   default: {
     std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
               << " [server_ip] [port] for client" << std::endl;
-    return -1;
   }
   }
 
+  io_service.stop();
+  scheduler->stop();
   return 0;
 }

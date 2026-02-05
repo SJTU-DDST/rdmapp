@@ -2,31 +2,25 @@
 #ifndef RDAMPP_QP_HPP__
 #define RDAMPP_QP_HPP__
 
-#ifdef RDMAPP_ASIO_COROUTINE
-#include <asio/awaitable.hpp>
-#endif
+#include "rdmapp/completion_token.h"
+#include "rdmapp/cq.h"
+#include "rdmapp/detail/noncopyable.h"
+#include "rdmapp/detail/serdes.h"
+#include "rdmapp/device.h"
+#include "rdmapp/mr.h"
+#include "rdmapp/pd.h"
+#include "rdmapp/srq.h"
 #include <atomic>
 #include <cassert>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
+#include <infiniband/verbs.h>
 #include <memory>
 #include <optional>
 #include <span>
 #include <utility>
 #include <vector>
-
-#include <infiniband/verbs.h>
-
-#include "rdmapp/completion_token.h"
-#include "rdmapp/cq.h"
-#include "rdmapp/device.h"
-#include "rdmapp/mr.h"
-#include "rdmapp/pd.h"
-#include "rdmapp/srq.h"
-
-#include "rdmapp/detail/noncopyable.h"
-#include "rdmapp/detail/serdes.h"
 
 namespace rdmapp {
 
@@ -95,21 +89,13 @@ namespace detail {
 /**
  * @brief A type alias to select the return type of an awaitable operation based
  * on a completion token.
- * @tparam Token The completion token type (`use_asio_awaitable_t` or
- * `use_native_awaitable_t`).
+ * @tparam Token The completion token type (`use_native_awaitable_t`).
  * @tparam Awaitable The native awaitable type used when
  * `use_native_awaitable_t` is specified.
  * @tparam Result The result type of the asynchronous operation.
  */
 template <typename Token, typename Awaitable, typename Result>
-using awaitable_return_t =
-#ifdef RDMAPP_ASIO_COROUTINE
-    std::conditional_t<
-        std::is_same_v<std::remove_cvref_t<Token>, use_asio_awaitable_t>,
-        asio::awaitable<Result>, Awaitable>;
-#else
-    Awaitable;
-#endif
+using awaitable_return_t = Awaitable;
 
 /**
  * @brief A helper function to cast away the constness from a `std::span`.
@@ -133,8 +119,6 @@ template <typename T> auto span_const_cast(std::span<const T> s) noexcept {
  * and atomics. It manages the QP lifecycle and simplifies resource handling
  * through RAII and smart pointers.
  *
- * @tparam ResumeStrategy The strategy for resuming coroutines after an
- * operation completes. See `rdmapp::qp_strategy`.
  */
 class basic_qp : public noncopyable,
                  public std::enable_shared_from_this<basic_qp> {
@@ -202,14 +186,13 @@ public:
    * operation.
    *
    * This object is returned by methods like `send`, `write`, `read`, and
-   * `compare_and_swap`. It is both a native C++20 awaitable and convertible to
-   * an `asio::awaitable`.
+   * `compare_and_swap`. It is a native C++20 awaitable.
    */
   class [[nodiscard]] send_awaitable
       : public std::enable_shared_from_this<send_awaitable> {
     friend basic_qp;
     std::weak_ptr<basic_qp> qp_;
-    std::unique_ptr<local_mr> local_mr_ ;
+    std::unique_ptr<local_mr> local_mr_;
     mr_view local_mr_view_;
     mr_view remote_mr_view_;
     std::exception_ptr exception_;
@@ -274,12 +257,6 @@ public:
     /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
 
-#ifdef RDMAPP_ASIO_COROUTINE
-    /// @brief Implicitly converts the object to an `asio::awaitable` for use in
-    /// Asio coroutines.
-    [[nodiscard]] operator asio::awaitable<send_result>() &&;
-#endif
-
     /// @brief Checks if the operation is an RDMA operation (read or write).
     constexpr bool is_rdma() const;
     /// @brief Checks if the operation is an atomic operation.
@@ -312,8 +289,8 @@ public:
   /**
    * @brief An awaitable object representing a pending receive operation.
    *
-   * This object is returned by the `recv` method. It is both a native C++20
-   * awaitable and convertible to an `asio::awaitable`.
+   * This object is returned by the `recv` method. It is a native C++20
+   * awaitable.
    */
   class [[nodiscard]] recv_awaitable {
     friend basic_qp;
@@ -340,12 +317,6 @@ public:
 
     /// @brief Retrieves any exception that occurred during the operation.
     std::exception_ptr unhandled_exception() const;
-
-#ifdef RDMAPP_ASIO_COROUTINE
-    /// @brief Implicitly converts the object to an `asio::awaitable` for use in
-    /// Asio coroutines.
-    [[nodiscard]] operator asio::awaitable<recv_result>() &&;
-#endif
   };
 
   /**

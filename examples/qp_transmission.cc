@@ -1,50 +1,70 @@
+#include <spdlog/spdlog.h>
+
 #include "qp_transmission.h"
 
 #include <array>
-#include <asio/awaitable.hpp>
-#include <asio/ip/tcp.hpp>
-#include <asio/read.hpp>
-#include <asio/write.hpp>
-#include <spdlog/spdlog.h>
-
-#include <rdmapp/qp.h>
+#include <cassert>
+#include <cppcoro/net/socket.hpp>
+#include <cppcoro/task.hpp>
+#include <span>
 
 namespace rdmapp {
 
-asio::awaitable<void> send_qp(rdmapp::qp const &qp,
-                              asio::ip::tcp::socket &socket) {
-  auto local_qp_data = qp.serialize();
-  assert(local_qp_data.size() != 0);
-  auto buffer = asio::buffer(local_qp_data);
-  auto nbytes = co_await asio::async_write(socket, buffer);
-  spdlog::debug("send qp: bytes={}", nbytes);
+namespace {
+
+auto write_exactly(cppcoro::net::socket &socket,
+                   std::span<const std::byte> buffer) -> cppcoro::task<void> {
+  std::size_t bytes_written = 0;
+  while (bytes_written < buffer.size()) {
+    bytes_written += co_await socket.send(buffer.data() + bytes_written,
+                                          buffer.size() - bytes_written);
+  }
 }
 
-asio::awaitable<rdmapp::deserialized_qp>
-recv_qp(asio::ip::tcp::socket &socket) {
+auto read_exactly(cppcoro::net::socket &socket, std::span<std::byte> buffer)
+    -> cppcoro::task<void> {
+  std::size_t bytes_read = 0;
+  while (bytes_read < buffer.size()) {
+    auto n = co_await socket.recv(buffer.data() + bytes_read,
+                                  buffer.size() - bytes_read);
+    if (n == 0) {
+      throw std::runtime_error("socket closed");
+    }
+    bytes_read += n;
+  }
+}
+
+} // namespace
+
+auto send_qp(rdmapp::qp const &qp, cppcoro::net::socket &socket)
+    -> cppcoro::task<void> {
+  auto local_qp_data = qp.serialize();
+  assert(!local_qp_data.empty());
+  co_await write_exactly(socket, std::as_bytes(std::span{local_qp_data}));
+  spdlog::debug("send qp: bytes={}", local_qp_data.size());
+}
+
+auto recv_qp(cppcoro::net::socket &socket)
+    -> cppcoro::task<rdmapp::deserialized_qp> {
   std::array<std::byte, rdmapp::deserialized_qp::qp_header::kSerializedSize>
-      header;
-  auto buffer = asio::buffer(header);
+      header_buffer;
+  co_await read_exactly(socket, header_buffer);
 
-  auto nbytes = co_await asio::async_read(socket, buffer);
-  spdlog::debug("read qp header: bytes={} expected={}", nbytes, buffer.size());
-
-  auto remote_qp = rdmapp::deserialized_qp::deserialize(header.data());
+  auto remote_qp = rdmapp::deserialized_qp::deserialize(header_buffer.data());
   auto const remote_gid_str =
       rdmapp::device::gid_hex_string(remote_qp.header.gid);
   spdlog::debug("received header gid={} lid={} qpn={} psn={} user_data_size={}",
                 remote_gid_str.c_str(), remote_qp.header.lid,
                 remote_qp.header.qp_num, remote_qp.header.sq_psn,
                 remote_qp.header.user_data_size);
+
   remote_qp.user_data.resize(remote_qp.header.user_data_size);
-
   if (remote_qp.header.user_data_size > 0) {
-    auto buffer = asio::buffer(remote_qp.user_data);
-
-    auto nbytes = co_await asio::async_read(socket, buffer);
-    spdlog::debug("read userdata: bytes={} expected={}", nbytes, buffer.size());
+    co_await read_exactly(
+        socket, std::as_writable_bytes(std::span{remote_qp.user_data}));
   }
-  spdlog::debug("received user data: bytes={}", remote_qp.user_data.size());
+  spdlog::debug("received user data: bytes={}",
+                remote_qp.header.user_data_size);
   co_return remote_qp;
 }
 

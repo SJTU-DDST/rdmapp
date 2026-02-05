@@ -1,15 +1,19 @@
 #pragma once
 
-#include <asio/awaitable.hpp>
-#include <asio/ip/tcp.hpp>
-
+#include <cppcoro/net/socket.hpp>
+#include <cppcoro/task.hpp>
 #include <rdmapp/qp.h>
 
 namespace rdmapp {
+struct ConnConfig {
+  uint32_t cq_size = 256;
+  qp_config queue_pair_config = default_qp_config();
+};
 
-asio::awaitable<void> send_qp(rdmapp::qp const &qp,
-                              asio::ip::tcp::socket &socket);
+auto send_qp(rdmapp::qp const &qp, cppcoro::net::socket &socket)
+    -> cppcoro::task<void>;
 
-asio::awaitable<rdmapp::deserialized_qp> recv_qp(asio::ip::tcp::socket &socket);
+auto recv_qp(cppcoro::net::socket &socket)
+    -> cppcoro::task<rdmapp::deserialized_qp>;
 
 } // namespace rdmapp

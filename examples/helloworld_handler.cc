@@ -1,18 +1,20 @@
+#include <spdlog/spdlog.h>
+
 #include "helloworld_handler.hpp"
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <spdlog/spdlog.h>
-#include <string_view>
-
+#include <cppcoro/async_scope.hpp>
+#include <cppcoro/task.hpp>
+#include <cstdint>
 #include <rdmapp/mr.h>
 #include <rdmapp/qp.h>
+#include <string_view>
 
 constexpr std::string_view msg = "hello";
 constexpr std::string_view resp = "world";
 
-static asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
+template <typename T> using awaitable = cppcoro::task<T>;
+
+static awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
 
   spdlog::info("handling qp");
   /* Send/Recv */
@@ -77,20 +79,22 @@ static asio::awaitable<void> handle_qp(std::shared_ptr<rdmapp::qp> qp) {
   co_return;
 }
 
-asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor) {
+awaitable<void> server(rdmapp::qp_acceptor &acceptor) {
+  cppcoro::async_scope scope;
   while (true) {
-    auto qp = co_await acceptor->accept();
+    auto qp = co_await acceptor.accept();
     if (!qp) {
       spdlog::error("server: failed to accept qp, skipped");
       continue;
     }
-    asio::co_spawn(co_await asio::this_coro::executor, handle_qp(qp),
-                   asio::detached);
+    scope.spawn(handle_qp(qp));
   }
+  co_await scope.join();
 }
 
-asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector) {
-  auto qp = co_await connector->connect();
+awaitable<void> client(rdmapp::qp_connector &connector, std::string_view host,
+                       uint16_t port) {
+  auto qp = co_await connector.connect(host, port);
   std::string buffer;
   buffer.resize(msg.size());
   auto recv_buffer = std::as_writable_bytes(std::span(buffer));

@@ -2,7 +2,8 @@
 
 #include "qp_acceptor.h"
 #include "qp_connector.h"
-#include <asio/awaitable.hpp>
+#include <cppcoro/task.hpp>
 
-asio::awaitable<void> client(std::shared_ptr<rdmapp::qp_connector> connector);
-asio::awaitable<void> server(std::shared_ptr<rdmapp::qp_acceptor> acceptor);
+cppcoro::task<void> client(rdmapp::qp_connector &connector,
+                           std::string_view host, uint16_t port);
+cppcoro::task<void> server(rdmapp::qp_acceptor &acceptor);
