@@ -86,7 +86,7 @@ private:
     spdlog::info("server_worker {} spawn", idx);
     while (true) {
       auto recv_view = rdmapp::mr_view(mr_, offset, kMsgSize);
-      co_await qp_->recv(recv_view, rdmapp::use_native_awaitable);
+      co_await qp_->recv(recv_view);
       g_stats.total_completed += 1;
       g_stats.total_bytes += kMsgSize;
     }
@@ -106,7 +106,7 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp) {
 
   // 发送循环
   for (int i = 0; i < kSendCount; i++) {
-    co_await qp->send(local_mr, rdmapp::use_native_awaitable);
+    co_await qp->send(local_mr);
 
     if (i && (i % kBatchSize == 0)) {
       auto now = std::chrono::high_resolution_clock::now();
