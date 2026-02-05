@@ -32,8 +32,7 @@ cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
 
   auto remote_mr_serialized =
       rdmapp::mr_view(local_mr, 0, rdmapp::remote_mr::kSerializedSize);
-  auto [nbytes, _] =
-      co_await qp->recv(remote_mr_serialized, rdmapp::use_native_awaitable);
+  auto [nbytes, _] = co_await qp->recv(remote_mr_serialized);
 
   assert(nbytes == rdmapp::remote_mr::kSerializedSize);
   (void)nbytes;
@@ -46,13 +45,12 @@ cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   std::fill(buffer.begin(), buffer.end(), std::byte(0xdd));
 
   for (int i = 0; i < kSendCount; i++) {
-    std::size_t nbytes [[maybe_unused]] = co_await qp->write_with_imm(
-        remote_mr, local_mr, i, rdmapp::use_native_awaitable);
+    std::size_t nbytes [[maybe_unused]] =
+        co_await qp->write_with_imm(remote_mr, local_mr, i);
   }
 
   for (int i = 0; i < kSendCount; i++) {
-    std::size_t nbytes [[maybe_unused]] =
-        co_await qp->send(local_mr, rdmapp::use_native_awaitable);
+    std::size_t nbytes [[maybe_unused]] = co_await qp->send(local_mr);
   }
 }
 
@@ -61,14 +59,14 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
   rdmapp::local_mr local_mr =
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size());
   auto local_mr_serialized = local_mr.serialize();
-  co_await qp->send(local_mr_serialized, rdmapp::use_native_awaitable);
+  co_await qp->send(local_mr_serialized);
 
   spdlog::info("server: local buffer sent");
 
   auto start_time = std::chrono::high_resolution_clock::now();
   auto last_batch_time = start_time;
   for (int i = 0; i < kSendCount; i++) {
-    co_await qp->recv(rdmapp::use_native_awaitable);
+    co_await qp->recv();
 
     if (i && (i % kBatchSize == 0)) {
       auto now = std::chrono::high_resolution_clock::now();
@@ -93,7 +91,7 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
   last_batch_time = start_time;
 
   for (int i = 0; i < kSendCount; i++) {
-    co_await qp->recv(local_mr, rdmapp::use_native_awaitable);
+    co_await qp->recv(local_mr);
 
     if (i && (i % kBatchSize == 0)) {
       auto now = std::chrono::high_resolution_clock::now();
