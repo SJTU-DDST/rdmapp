@@ -1,10 +1,8 @@
 #pragma once
 
-#include "rdmapp/completion_token.h"
 #include <functional>
 #include <infiniband/verbs.h>
 #include <new>
-#include <span>
 #include <stdexcept>
 #include <utility>
 
@@ -52,27 +50,5 @@ template <class T> static callback_ptr make_callback(T &&cb) {
 void destroy_callback(callback_ptr cb) noexcept;
 
 } // namespace executor_t
-
-class basic_executor {
-
-public:
-  /**
-   * @brief Construct a new executor object
-   */
-  basic_executor() noexcept;
-
-  /**
-   * @brief Process a completion entry.
-   *
-   * @param wc The completion entry to process.
-   */
-  template <typename CompletionToken>
-  requires ValidCompletionToken<CompletionToken>
-  static void process_wc(std::span<struct ibv_wc> const wc) noexcept;
-
-  ~basic_executor() noexcept;
-};
-
-using executor = basic_executor;
 
 } // namespace rdmapp

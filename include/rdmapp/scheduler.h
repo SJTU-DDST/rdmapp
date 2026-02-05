@@ -2,6 +2,7 @@
 
 #include <coroutine>
 #include <memory>
+#include <span>
 
 namespace rdmapp {
 
@@ -12,6 +13,9 @@ struct scheduler {
   virtual auto run() -> void = 0;
 
   virtual auto schedule(std::coroutine_handle<> h) noexcept -> void = 0;
+
+  virtual auto schedule(std::span<std::coroutine_handle<>> h) noexcept
+      -> void = 0;
 
   virtual auto stop() -> void = 0;
 };
@@ -25,6 +29,8 @@ struct basic_scheduler : scheduler {
   auto run() -> void override;
 
   auto schedule(std::coroutine_handle<> h) noexcept -> void override;
+
+  auto schedule(std::span<std::coroutine_handle<>> h) noexcept -> void override;
 
   auto stop() -> void override;
 

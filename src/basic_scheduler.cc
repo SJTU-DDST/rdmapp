@@ -32,6 +32,10 @@ struct basic_scheduler::Impl {
     tasks_queue_.enqueue(h);
   }
 
+  auto schedule(std::span<std::coroutine_handle<>> h) noexcept -> void {
+    tasks_queue_.enqueue_bulk(h.begin(), h.size());
+  }
+
   auto stop() noexcept -> void { stop_source_.request_stop(); }
 
 private:
@@ -47,6 +51,11 @@ auto basic_scheduler::run() -> void { impl_->run(); }
 auto basic_scheduler::stop() -> void { impl_->stop(); }
 
 auto basic_scheduler::schedule(std::coroutine_handle<> h) noexcept -> void {
+  impl_->schedule(h);
+}
+
+auto basic_scheduler::schedule(std::span<std::coroutine_handle<>> h) noexcept
+    -> void {
   impl_->schedule(h);
 }
 
