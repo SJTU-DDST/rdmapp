@@ -1,6 +1,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "payload_size.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
 #include <chrono>
@@ -16,8 +17,9 @@
 #include <rdmapp/qp.h>
 #include <rdmapp/rdmapp.h>
 #include <string>
+#include <vector>
 
-constexpr std::size_t kMessageSize = 4096;
+constexpr std::size_t kDefaultPayloadSize = 4096;
 constexpr int kBatchSize = 100'000;
 #ifdef RDMAPP_BUILD_DEBUG
 constexpr int kSendCount = 100;
@@ -25,8 +27,9 @@ constexpr int kSendCount = 100;
 constexpr int kSendCount = 1000'000;
 #endif
 
-cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
-  std::array<std::byte, kMessageSize> buffer;
+cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp,
+                                  std::size_t payload_size) {
+  std::vector<std::byte> buffer(payload_size);
   rdmapp::local_mr local_mr =
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size());
 
@@ -54,8 +57,9 @@ cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp) {
   }
 }
 
-cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
-  std::array<std::byte, kMessageSize> buffer;
+cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
+                               std::size_t payload_size) {
+  std::vector<std::byte> buffer(payload_size);
   rdmapp::local_mr local_mr =
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size());
   auto local_mr_serialized = local_mr.serialize();
@@ -113,19 +117,21 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp) {
                static_cast<double>(total_duration.count()) / kSendCount);
 }
 
-cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor) {
+cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
+                           std::size_t payload_size) {
   cppcoro::async_scope scope;
   while (true) {
     auto qp = co_await acceptor.accept();
-    scope.spawn(qp_handler(qp));
+    scope.spawn(qp_handler(qp, payload_size));
   }
   co_await scope.join();
 }
 
 cppcoro::task<void> client(rdmapp::native_qp_connector &connector,
-                           std::string_view host, uint16_t port) {
+                           std::string_view host, uint16_t port,
+                           std::size_t payload_size) {
   auto qp = co_await connector.connect(host, port);
-  co_await client_worker(qp);
+  co_await client_worker(qp, payload_size);
 }
 
 int main(int argc, char *argv[]) {
@@ -142,26 +148,38 @@ int main(int argc, char *argv[]) {
   std::jthread w([&]() { io_service.process_events(); });
   std::jthread s([=]() { scheduler->run(); });
 
-  switch (argc) {
-  case 2: {
+  examples::payload_size_args args;
+  try {
+    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize);
+  } catch (std::exception const &e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
+  }
 
-    uint16_t port = (uint16_t)std::stoi(argv[1]);
+  spdlog::info("payload size: {} bytes", args.payload_size);
+
+  switch (args.positional.size()) {
+  case 1: {
+
+    uint16_t port = (uint16_t)std::stoi(std::string(args.positional[0]));
     auto acceptor = rdmapp::qp_acceptor(io_service, scheduler, port, pd);
-    cppcoro::sync_wait(server(acceptor));
+    cppcoro::sync_wait(server(acceptor, args.payload_size));
     break;
   }
 
-  case 3: {
-    uint16_t port = (uint16_t)std::stoi(argv[2]);
-    std::string_view hostname = argv[1];
+  case 2: {
+    uint16_t port = (uint16_t)std::stoi(std::string(args.positional[1]));
+    std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
-    cppcoro::sync_wait(client(connector, hostname, port));
+    cppcoro::sync_wait(client(connector, hostname, port, args.payload_size));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }
 
   default: {
-    std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
+    std::cout << "Usage: " << argv[0] << examples::payload_size_usage()
+              << " [port] for server and " << argv[0]
+              << examples::payload_size_usage()
               << " [server_ip] [port] for client" << std::endl;
   }
   }

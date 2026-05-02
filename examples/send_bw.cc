@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include "payload_size.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
 #include <cppcoro/io_service.hpp>
@@ -25,7 +26,7 @@ constexpr int kBatchSize = 10000;
 
 constexpr int kConcurrency = 4;
 constexpr int kRecvDepth = 32;
-constexpr std::size_t kMsgSize = 2 * 1024 * 1024;
+constexpr std::size_t kDefaultPayloadSize = 2 * 1024 * 1024;
 
 struct Stats {
   std::atomic<size_t> total_completed{0};
@@ -56,16 +57,19 @@ void reporter_loop(std::string_view role) {
 
 class Server {
   std::shared_ptr<rdmapp::qp> qp_;
+  std::size_t payload_size_;
 
   // 统一的大块内存池，避免频繁注册 MR
   std::vector<std::byte> buffer_pool_;
   rdmapp::local_mr mr_;
 
 public:
-  Server(std::shared_ptr<rdmapp::qp> qp)
-      : qp_(qp), buffer_pool_(kRecvDepth * kMsgSize),
+  Server(std::shared_ptr<rdmapp::qp> qp, std::size_t payload_size)
+      : qp_(qp), payload_size_(payload_size),
+        buffer_pool_(kRecvDepth * payload_size_),
         mr_(qp->pd_ptr()->reg_mr(buffer_pool_.data(), buffer_pool_.size())) {
-    spdlog::info("server: initialized with {} concurrent workers", kRecvDepth);
+    spdlog::info("server: initialized with {} concurrent workers, payload {} bytes",
+                 kRecvDepth, payload_size_);
   }
 
   cppcoro::task<void> run() {
@@ -82,22 +86,23 @@ public:
 private:
   // 单个 Worker：负责一个 Slot 的 接收 -> 处理 -> 发送 循环
   cppcoro::task<void> server_worker(size_t idx) {
-    size_t offset = idx * kMsgSize;
+    size_t offset = idx * payload_size_;
     spdlog::info("server_worker {} spawn", idx);
     while (true) {
-      auto recv_view = rdmapp::mr_view(mr_, offset, kMsgSize);
+      auto recv_view = rdmapp::mr_view(mr_, offset, payload_size_);
       co_await qp_->recv(recv_view);
       g_stats.total_completed += 1;
-      g_stats.total_bytes += kMsgSize;
+      g_stats.total_bytes += payload_size_;
     }
   }
 };
 
-cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp) {
+cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
+                                std::size_t payload_size) {
   spdlog::info("send_worker {} spawn", idx);
 
   // 构造一些测试数据
-  std::vector<std::byte> req_vec(kMsgSize, std::byte{0x01});
+  std::vector<std::byte> req_vec(payload_size, std::byte{0x01});
   std::span<std::byte> req_span(req_vec);
   auto local_mr = qp->pd_ptr()->reg_mr(req_span.data(), req_span.size());
 
@@ -128,11 +133,11 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp) {
 }
 
 cppcoro::task<void> client(auto &connector, std::string_view hostname,
-                           uint16_t port) {
+                           uint16_t port, std::size_t payload_size) {
   auto qp = co_await connector.connect(hostname, port);
   std::vector<cppcoro::task<void>> tasks;
   for (int i = 0; i < kConcurrency; i++) {
-    tasks.emplace_back(send_worker(i, qp));
+    tasks.emplace_back(send_worker(i, qp, payload_size));
   }
 
   co_await cppcoro::when_all(std::move(tasks));
@@ -140,10 +145,11 @@ cppcoro::task<void> client(auto &connector, std::string_view hostname,
   co_return;
 }
 
-cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor) {
+cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
+                           std::size_t payload_size) {
   spdlog::info("server waiting for connection...");
   auto qp = co_await acceptor.accept();
-  Server server(qp);
+  Server server(qp, payload_size);
   co_await server.run();
 }
 
@@ -163,25 +169,37 @@ int main(int argc, char *argv[]) {
   std::jthread w([&]() { io_service.process_events(); });
   std::jthread s([=]() { scheduler->run(); });
 
-  switch (argc) {
-  case 2: {
-    uint16_t port = (uint16_t)std::stoi(argv[1]);
+  examples::payload_size_args args;
+  try {
+    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize);
+  } catch (std::exception const &e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
+  }
+
+  spdlog::info("payload size: {} bytes", args.payload_size);
+
+  switch (args.positional.size()) {
+  case 1: {
+    uint16_t port = (uint16_t)std::stoi(std::string(args.positional[0]));
     auto acceptor = rdmapp::qp_acceptor(io_service, scheduler, port, pd);
-    cppcoro::sync_wait(server(acceptor));
+    cppcoro::sync_wait(server(acceptor, args.payload_size));
     break;
   }
 
-  case 3: {
-    uint16_t port = (uint16_t)std::stoi(argv[2]);
-    std::string_view hostname = argv[1];
+  case 2: {
+    uint16_t port = (uint16_t)std::stoi(std::string(args.positional[1]));
+    std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
-    cppcoro::sync_wait(client(connector, hostname, port));
+    cppcoro::sync_wait(client(connector, hostname, port, args.payload_size));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }
 
   default: {
-    std::cout << "Usage: " << argv[0] << " [port] for server and " << argv[0]
+    std::cout << "Usage: " << argv[0] << examples::payload_size_usage()
+              << " [port] for server and " << argv[0]
+              << examples::payload_size_usage()
               << " [server_ip] [port] for client" << std::endl;
   }
   }
