@@ -28,7 +28,8 @@ constexpr int kSendCount = 1000'000;
 #endif
 
 cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp,
-                                  std::size_t payload_size) {
+                                  std::size_t payload_size,
+                                  std::size_t count) {
   std::vector<std::byte> buffer(payload_size);
   rdmapp::local_mr local_mr =
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size());
@@ -47,18 +48,18 @@ cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp,
 
   std::fill(buffer.begin(), buffer.end(), std::byte(0xdd));
 
-  for (int i = 0; i < kSendCount; i++) {
+  for (std::size_t i = 0; i < count; i++) {
     std::size_t nbytes [[maybe_unused]] =
         co_await qp->write_with_imm(remote_mr, local_mr, i);
   }
 
-  for (int i = 0; i < kSendCount; i++) {
+  for (std::size_t i = 0; i < count; i++) {
     std::size_t nbytes [[maybe_unused]] = co_await qp->send(local_mr);
   }
 }
 
 cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
-                               std::size_t payload_size) {
+                               std::size_t payload_size, std::size_t count) {
   std::vector<std::byte> buffer(payload_size);
   rdmapp::local_mr local_mr =
       qp->pd_ptr()->reg_mr(buffer.data(), buffer.size());
@@ -69,7 +70,7 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
 
   auto start_time = std::chrono::high_resolution_clock::now();
   auto last_batch_time = start_time;
-  for (int i = 0; i < kSendCount; i++) {
+  for (std::size_t i = 0; i < count; i++) {
     co_await qp->recv();
 
     if (i && (i % kBatchSize == 0)) {
@@ -77,7 +78,7 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
       auto batch_duration =
           std::chrono::duration_cast<std::chrono::microseconds>(
               now - last_batch_time);
-      spdlog::info("[write_with_imm/recv] batch {:7d}: avg latency {:.3f}us", i,
+      spdlog::info("[write_with_imm/recv] batch {:7}: avg latency {:.3f}us", i,
                    static_cast<double>(batch_duration.count()) / kBatchSize);
       last_batch_time = now;
     }
@@ -85,16 +86,16 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
   auto end_time = std::chrono::high_resolution_clock::now();
   auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(
       end_time - start_time);
-  spdlog::info("[write_with_imm/recv] total operations: {}", kSendCount);
+  spdlog::info("[write_with_imm/recv] total operations: {}", count);
   spdlog::info("[write_with_imm/recv] total time: {}us",
                total_duration.count());
   spdlog::info("[write_with_imm/recv] average time per operation: {:.3f}us",
-               static_cast<double>(total_duration.count()) / kSendCount);
+               static_cast<double>(total_duration.count()) / count);
 
   start_time = std::chrono::high_resolution_clock::now();
   last_batch_time = start_time;
 
-  for (int i = 0; i < kSendCount; i++) {
+  for (std::size_t i = 0; i < count; i++) {
     co_await qp->recv(local_mr);
 
     if (i && (i % kBatchSize == 0)) {
@@ -102,7 +103,7 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
       auto batch_duration =
           std::chrono::duration_cast<std::chrono::microseconds>(
               now - last_batch_time);
-      spdlog::info("[send/recv] batch {:7d}: avg latency {:.3f}us", i,
+      spdlog::info("[send/recv] batch {:7}: avg latency {:.3f}us", i,
                    static_cast<double>(batch_duration.count()) / kBatchSize);
       last_batch_time = now;
     }
@@ -111,27 +112,27 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
 
   total_duration = std::chrono::duration_cast<std::chrono::microseconds>(
       end_time - start_time);
-  spdlog::info("[send/recv] total operations: {}", kSendCount);
+  spdlog::info("[send/recv] total operations: {}", count);
   spdlog::info("[send/recv] total time: {}us", total_duration.count());
   spdlog::info("[send/recv] average time per operation: {:.3f}us",
-               static_cast<double>(total_duration.count()) / kSendCount);
+               static_cast<double>(total_duration.count()) / count);
 }
 
 cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
-                           std::size_t payload_size) {
+                           std::size_t payload_size, std::size_t count) {
   cppcoro::async_scope scope;
   while (true) {
     auto qp = co_await acceptor.accept();
-    scope.spawn(qp_handler(qp, payload_size));
+    scope.spawn(qp_handler(qp, payload_size, count));
   }
   co_await scope.join();
 }
 
 cppcoro::task<void> client(rdmapp::native_qp_connector &connector,
                            std::string_view host, uint16_t port,
-                           std::size_t payload_size) {
+                           std::size_t payload_size, std::size_t count) {
   auto qp = co_await connector.connect(host, port);
-  co_await client_worker(qp, payload_size);
+  co_await client_worker(qp, payload_size, count);
 }
 
 int main(int argc, char *argv[]) {
@@ -150,20 +151,22 @@ int main(int argc, char *argv[]) {
 
   examples::payload_size_args args;
   try {
-    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize);
+    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize,
+                                             kSendCount);
   } catch (std::exception const &e) {
     std::cerr << e.what() << std::endl;
     return 1;
   }
 
-  spdlog::info("payload size: {} bytes", args.payload_size);
+  spdlog::info("payload size: {} bytes, count: {}", args.payload_size,
+               args.count);
 
   switch (args.positional.size()) {
   case 1: {
 
     uint16_t port = (uint16_t)std::stoi(std::string(args.positional[0]));
     auto acceptor = rdmapp::qp_acceptor(io_service, scheduler, port, pd);
-    cppcoro::sync_wait(server(acceptor, args.payload_size));
+    cppcoro::sync_wait(server(acceptor, args.payload_size, args.count));
     break;
   }
 
@@ -171,7 +174,8 @@ int main(int argc, char *argv[]) {
     uint16_t port = (uint16_t)std::stoi(std::string(args.positional[1]));
     std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
-    cppcoro::sync_wait(client(connector, hostname, port, args.payload_size));
+    cppcoro::sync_wait(
+        client(connector, hostname, port, args.payload_size, args.count));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }

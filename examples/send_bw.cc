@@ -98,7 +98,8 @@ private:
 };
 
 cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
-                                std::size_t payload_size) {
+                                std::size_t payload_size,
+                                std::size_t count) {
   spdlog::info("send_worker {} spawn", idx);
 
   // 构造一些测试数据
@@ -110,7 +111,7 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
   auto last_batch_time = start_time;
 
   // 发送循环
-  for (int i = 0; i < kSendCount; i++) {
+  for (std::size_t i = 0; i < count; i++) {
     co_await qp->send(local_mr);
 
     if (i && (i % kBatchSize == 0)) {
@@ -118,7 +119,7 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
       auto batch_duration =
           std::chrono::duration_cast<std::chrono::microseconds>(
               now - last_batch_time);
-      spdlog::info("[send:{:>2}] {:7d} op: avg latency {:.3f}us", idx, i,
+      spdlog::info("[send:{:>2}] {:7} op: avg latency {:.3f}us", idx, i,
                    static_cast<double>(batch_duration.count()) / kBatchSize);
       last_batch_time = now;
     }
@@ -126,18 +127,19 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
   auto end_time = std::chrono::high_resolution_clock::now();
   auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(
       end_time - start_time);
-  spdlog::info("[send:{:>2}] total operations: {}", idx, kSendCount);
+  spdlog::info("[send:{:>2}] total operations: {}", idx, count);
   spdlog::info("[send:{:>2}] total time: {}us", idx, total_duration.count());
   spdlog::info("[send:{:>2}] average time per operation: {:.3f}us", idx,
-               static_cast<double>(total_duration.count()) / kSendCount);
+               static_cast<double>(total_duration.count()) / count);
 }
 
 cppcoro::task<void> client(auto &connector, std::string_view hostname,
-                           uint16_t port, std::size_t payload_size) {
+                           uint16_t port, std::size_t payload_size,
+                           std::size_t count) {
   auto qp = co_await connector.connect(hostname, port);
   std::vector<cppcoro::task<void>> tasks;
   for (int i = 0; i < kConcurrency; i++) {
-    tasks.emplace_back(send_worker(i, qp, payload_size));
+    tasks.emplace_back(send_worker(i, qp, payload_size, count));
   }
 
   co_await cppcoro::when_all(std::move(tasks));
@@ -171,13 +173,15 @@ int main(int argc, char *argv[]) {
 
   examples::payload_size_args args;
   try {
-    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize);
+    args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize,
+                                             kSendCount);
   } catch (std::exception const &e) {
     std::cerr << e.what() << std::endl;
     return 1;
   }
 
-  spdlog::info("payload size: {} bytes", args.payload_size);
+  spdlog::info("payload size: {} bytes, count: {}", args.payload_size,
+               args.count);
 
   switch (args.positional.size()) {
   case 1: {
@@ -191,7 +195,8 @@ int main(int argc, char *argv[]) {
     uint16_t port = (uint16_t)std::stoi(std::string(args.positional[1]));
     std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
-    cppcoro::sync_wait(client(connector, hostname, port, args.payload_size));
+    cppcoro::sync_wait(
+        client(connector, hostname, port, args.payload_size, args.count));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }
