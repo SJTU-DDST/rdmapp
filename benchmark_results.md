@@ -185,3 +185,38 @@ maximum per-process average in that run.
 | 16 | 1 | 100000 | 9.226 us | 5.923..16.173 us | 9.752 us | 8.683..10.954 us |
 | 24 | 1 | 100000 | 31.719 us | 9.718..58.720 us | 18.129 us | 9.267..30.312 us |
 | 32 | 1 | 100000 | 104.177 us | 49.501..200.366 us | 53.216 us | 26.705..105.053 us |
+
+## 1.5 KiB Latency Process Scaling, Dense 1-16
+
+Date: 2026-05-08
+
+- Commit tested: `0b5834d27aace06d4a7e0f7436a5b3fd1df9ef00`
+- Payload: 1536 bytes
+- Process definition: one independent `latency` process. Each process uses `--threads 1 --scheduler-threads 1`.
+- Count per process: 100000
+- NUMA binding: both client and server processes used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server processes, local host `192.168.98.70` ran the client processes.
+
+The values below are server-side averages from a single dense sweep across
+process counts 1 through 16. For each process count, the average is computed
+across all per-process averages; the range shows the minimum and maximum
+per-process average in that run.
+
+| Processes | Threads per process | Count per process | write_with_imm/recv avg latency | write range | send/recv avg latency | send range |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 100000 | 3.477 us | 3.477..3.477 us | 4.432 us | 4.432..4.432 us |
+| 2 | 1 | 100000 | 4.029 us | 3.964..4.094 us | 4.031 us | 4.021..4.041 us |
+| 3 | 1 | 100000 | 3.711 us | 3.656..3.752 us | 4.061 us | 3.913..4.144 us |
+| 4 | 1 | 100000 | 4.698 us | 4.490..5.133 us | 4.876 us | 4.560..5.450 us |
+| 5 | 1 | 100000 | 3.927 us | 3.767..4.105 us | 4.243 us | 4.168..4.291 us |
+| 6 | 1 | 100000 | 4.720 us | 4.581..5.001 us | 4.628 us | 4.420..5.008 us |
+| 7 | 1 | 100000 | 4.569 us | 4.217..5.073 us | 5.093 us | 4.874..5.415 us |
+| 8 | 1 | 100000 | 4.995 us | 4.487..5.431 us | 5.467 us | 5.091..5.916 us |
+| 9 | 1 | 100000 | 5.000 us | 4.543..5.529 us | 5.180 us | 4.724..6.114 us |
+| 10 | 1 | 100000 | 4.966 us | 3.995..6.242 us | 5.483 us | 4.760..6.480 us |
+| 11 | 1 | 100000 | 6.978 us | 6.159..8.212 us | 7.192 us | 6.250..8.405 us |
+| 12 | 1 | 100000 | 5.021 us | 4.434..5.595 us | 5.835 us | 5.084..6.593 us |
+| 13 | 1 | 100000 | 5.157 us | 4.215..6.084 us | 5.462 us | 4.818..6.446 us |
+| 14 | 1 | 100000 | 5.124 us | 4.443..6.399 us | 5.602 us | 5.113..6.380 us |
+| 15 | 1 | 100000 | 6.033 us | 4.462..7.973 us | 6.655 us | 5.198..7.833 us |
+| 16 | 1 | 100000 | 7.807 us | 6.197..9.836 us | 7.483 us | 6.280..9.888 us |
