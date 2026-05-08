@@ -78,7 +78,7 @@ if has_config("examples") then
                   "examples/helloworld_handler.cc")
         add_includedirs("examples/include", { public = true })
 
-    local examples = {"helloworld", "latency", "send_bw"}
+    local examples = {"helloworld", "latency", "send_bw", "read_bw"}
     for _, name in ipairs(examples) do
         target(name)
             set_kind("binary")
