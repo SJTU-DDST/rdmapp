@@ -220,3 +220,30 @@ per-process average in that run.
 | 14 | 1 | 100000 | 5.124 us | 4.443..6.399 us | 5.602 us | 5.113..6.380 us |
 | 15 | 1 | 100000 | 6.033 us | 4.462..7.973 us | 6.655 us | 5.198..7.833 us |
 | 16 | 1 | 100000 | 7.807 us | 6.197..9.836 us | 7.483 us | 6.280..9.888 us |
+
+## 1.5 KiB Latency With Read Thread Scaling
+
+Date: 2026-05-08
+
+- Commit tested: `1016b125e7408795a9d0cf47f203e5f39dacef3a`
+- Payload: 1536 bytes
+- Thread definition: one independent QP / benchmark stream. CQ poller scheduler threads are reported separately and are not counted as benchmark threads.
+- Scheduler policy: `scheduler_threads = ceil(threads / 4)`, keeping at least one scheduler per four benchmark streams.
+- Count per thread: 100000
+- NUMA binding: both client and server used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server, local host `192.168.98.70` ran the client.
+
+The values below are averages across per-QP averages. `write_with_imm/recv` and
+`send/recv` are measured on the server side. `read` is measured on the client
+side because RDMA read is one-sided and does not produce a server-side receive
+completion.
+
+| Threads | Scheduler threads | Count per thread | write_with_imm/recv avg latency | write range | send/recv avg latency | send range | read avg latency | read range |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 100000 | 3.460 us | 3.460..3.460 us | 3.930 us | 3.930..3.930 us | 2.752 us | 2.752..2.752 us |
+| 4 | 1 | 100000 | 4.572 us | 4.146..5.050 us | 5.137 us | 4.843..5.717 us | 2.939 us | 2.861..2.978 us |
+| 8 | 2 | 100000 | 5.561 us | 4.656..6.698 us | 5.478 us | 5.072..6.138 us | 3.269 us | 3.189..3.340 us |
+| 12 | 3 | 100000 | 6.026 us | 5.047..8.306 us | 6.652 us | 5.877..8.222 us | 3.542 us | 3.286..3.936 us |
+| 16 | 4 | 100000 | 10.004 us | 8.006..11.661 us | 9.821 us | 8.385..11.017 us | 3.669 us | 3.524..3.992 us |
+| 24 | 6 | 100000 | 17.089 us | 13.689..22.348 us | 16.862 us | 15.026..19.992 us | 4.377 us | 3.626..6.355 us |
+| 32 | 8 | 100000 | 37.450 us | 17.771..62.610 us | 30.660 us | 20.574..42.945 us | 5.926 us | 4.039..8.287 us |
