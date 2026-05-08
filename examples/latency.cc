@@ -57,6 +57,37 @@ cppcoro::task<void> client_worker(std::shared_ptr<rdmapp::qp> qp,
   for (std::size_t i = 0; i < count; i++) {
     std::size_t nbytes [[maybe_unused]] = co_await qp->send(local_mr);
   }
+
+  auto [ack_nbytes, ack_imm] = co_await qp->recv(remote_mr_serialized);
+  assert(ack_nbytes == rdmapp::remote_mr::kSerializedSize);
+  assert(!ack_imm);
+  (void)ack_nbytes;
+  (void)ack_imm;
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+  auto last_batch_time = start_time;
+  for (std::size_t i = 0; i < count; i++) {
+    std::size_t nbytes [[maybe_unused]] = co_await qp->read(remote_mr, local_mr);
+
+    if (i && (i % kBatchSize == 0)) {
+      auto now = std::chrono::high_resolution_clock::now();
+      auto batch_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              now - last_batch_time);
+      spdlog::info("[read] batch {:7}: avg latency {:.3f}us", i,
+                   static_cast<double>(batch_duration.count()) / kBatchSize);
+      last_batch_time = now;
+    }
+  }
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+      end_time - start_time);
+  spdlog::info("[read] total operations: {}", count);
+  spdlog::info("[read] total time: {}us", total_duration.count());
+  spdlog::info("[read] average time per operation: {:.3f}us",
+               static_cast<double>(total_duration.count()) / count);
+
+  co_await qp->send(local_mr);
 }
 
 cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
@@ -117,6 +148,9 @@ cppcoro::task<void> qp_handler(std::shared_ptr<rdmapp::qp> qp,
   spdlog::info("[send/recv] total time: {}us", total_duration.count());
   spdlog::info("[send/recv] average time per operation: {:.3f}us",
                static_cast<double>(total_duration.count()) / count);
+
+  co_await qp->send(local_mr_serialized);
+  co_await qp->recv(local_mr);
 }
 
 cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
