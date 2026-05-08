@@ -3,6 +3,7 @@
 #include "payload_size.h"
 #include "qp_acceptor.h"
 #include "qp_connector.h"
+#include <cppcoro/async_scope.hpp>
 #include <cppcoro/io_service.hpp>
 #include <cppcoro/net/socket.hpp>
 #include <cppcoro/sync_wait.hpp>
@@ -24,7 +25,6 @@ constexpr int kSendCount = 1024 * 1024 * 1024;
 constexpr int kBatchSize = 10000;
 #endif
 
-constexpr int kConcurrency = 4;
 constexpr int kRecvDepth = 32;
 constexpr std::size_t kDefaultPayloadSize = 2 * 1024 * 1024;
 
@@ -58,28 +58,30 @@ void reporter_loop(std::string_view role) {
 class Server {
   std::shared_ptr<rdmapp::qp> qp_;
   std::size_t payload_size_;
+  std::size_t recv_depth_;
 
   // 统一的大块内存池，避免频繁注册 MR
   std::vector<std::byte> buffer_pool_;
   rdmapp::local_mr mr_;
 
 public:
-  Server(std::shared_ptr<rdmapp::qp> qp, std::size_t payload_size)
-      : qp_(qp), payload_size_(payload_size),
-        buffer_pool_(kRecvDepth * payload_size_),
+  Server(std::shared_ptr<rdmapp::qp> qp, std::size_t payload_size,
+         std::size_t recv_depth)
+      : qp_(qp), payload_size_(payload_size), recv_depth_(recv_depth),
+        buffer_pool_(recv_depth_ * payload_size_),
         mr_(qp->pd_ptr()->reg_mr(buffer_pool_.data(), buffer_pool_.size())) {
-    spdlog::info("server: initialized with {} concurrent workers, payload {} bytes",
-                 kRecvDepth, payload_size_);
+    spdlog::info(
+        "server: initialized with {} recv workers, payload {} bytes",
+        recv_depth_, payload_size_);
   }
 
   cppcoro::task<void> run() {
     std::vector<cppcoro::task<void>> workers;
-    workers.reserve(kRecvDepth);
+    workers.reserve(recv_depth_);
 
-    for (size_t i = 0; i < kRecvDepth; ++i) {
+    for (size_t i = 0; i < recv_depth_; ++i) {
       workers.emplace_back(server_worker(i));
     }
-    std::jthread reporter(reporter_loop, "server");
     co_await cppcoro::when_all(std::move(workers));
   }
 
@@ -135,11 +137,14 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
 
 cppcoro::task<void> client(auto &connector, std::string_view hostname,
                            uint16_t port, std::size_t payload_size,
-                           std::size_t count) {
-  auto qp = co_await connector.connect(hostname, port);
+                           std::size_t count, std::size_t threads) {
   std::vector<cppcoro::task<void>> tasks;
-  for (int i = 0; i < kConcurrency; i++) {
-    tasks.emplace_back(send_worker(i, qp, payload_size, count));
+  tasks.reserve(threads);
+
+  for (std::size_t i = 0; i < threads; i++) {
+    auto qp = co_await connector.connect(hostname, port);
+    tasks.emplace_back(send_worker(static_cast<int>(i), qp, payload_size,
+                                   count));
   }
 
   co_await cppcoro::when_all(std::move(tasks));
@@ -148,11 +153,19 @@ cppcoro::task<void> client(auto &connector, std::string_view hostname,
 }
 
 cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
-                           std::size_t payload_size) {
-  spdlog::info("server waiting for connection...");
-  auto qp = co_await acceptor.accept();
-  Server server(qp, payload_size);
-  co_await server.run();
+                           std::size_t payload_size,
+                           std::size_t recv_depth) {
+  cppcoro::async_scope scope;
+  std::jthread reporter(reporter_loop, "server");
+
+  while (true) {
+    spdlog::info("server waiting for connection...");
+    auto qp = co_await acceptor.accept();
+    auto server = std::make_shared<Server>(qp, payload_size, recv_depth);
+    scope.spawn(server->run());
+  }
+
+  co_await scope.join();
 }
 
 int main(int argc, char *argv[]) {
@@ -174,20 +187,20 @@ int main(int argc, char *argv[]) {
   examples::payload_size_args args;
   try {
     args = examples::parse_payload_size_args(argc, argv, kDefaultPayloadSize,
-                                             kSendCount);
+                                             kSendCount, 1, kRecvDepth);
   } catch (std::exception const &e) {
     std::cerr << e.what() << std::endl;
     return 1;
   }
 
-  spdlog::info("payload size: {} bytes, count: {}", args.payload_size,
-               args.count);
+  spdlog::info("payload size: {} bytes, count: {}, threads: {}, recv depth: {}",
+               args.payload_size, args.count, args.threads, args.recv_depth);
 
   switch (args.positional.size()) {
   case 1: {
     uint16_t port = (uint16_t)std::stoi(std::string(args.positional[0]));
     auto acceptor = rdmapp::qp_acceptor(io_service, scheduler, port, pd);
-    cppcoro::sync_wait(server(acceptor, args.payload_size));
+    cppcoro::sync_wait(server(acceptor, args.payload_size, args.recv_depth));
     break;
   }
 
@@ -196,7 +209,8 @@ int main(int argc, char *argv[]) {
     std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
     cppcoro::sync_wait(
-        client(connector, hostname, port, args.payload_size, args.count));
+        client(connector, hostname, port, args.payload_size, args.count,
+               args.threads));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }

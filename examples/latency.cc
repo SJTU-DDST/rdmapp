@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cppcoro/async_scope.hpp>
 #include <cppcoro/sync_wait.hpp>
+#include <cppcoro/when_all.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -130,9 +131,17 @@ cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
 
 cppcoro::task<void> client(rdmapp::native_qp_connector &connector,
                            std::string_view host, uint16_t port,
-                           std::size_t payload_size, std::size_t count) {
-  auto qp = co_await connector.connect(host, port);
-  co_await client_worker(qp, payload_size, count);
+                           std::size_t payload_size, std::size_t count,
+                           std::size_t threads) {
+  std::vector<cppcoro::task<void>> tasks;
+  tasks.reserve(threads);
+
+  for (std::size_t i = 0; i < threads; ++i) {
+    auto qp = co_await connector.connect(host, port);
+    tasks.emplace_back(client_worker(qp, payload_size, count));
+  }
+
+  co_await cppcoro::when_all(std::move(tasks));
 }
 
 int main(int argc, char *argv[]) {
@@ -158,8 +167,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  spdlog::info("payload size: {} bytes, count: {}", args.payload_size,
-               args.count);
+  spdlog::info("payload size: {} bytes, count: {}, threads: {}",
+               args.payload_size, args.count, args.threads);
 
   switch (args.positional.size()) {
   case 1: {
@@ -175,7 +184,8 @@ int main(int argc, char *argv[]) {
     std::string_view hostname = args.positional[0];
     auto connector = rdmapp::qp_connector(io_service, scheduler, pd);
     cppcoro::sync_wait(
-        client(connector, hostname, port, args.payload_size, args.count));
+        client(connector, hostname, port, args.payload_size, args.count,
+               args.threads));
     spdlog::info("client exit after communicated with {}:{}", hostname, port);
     break;
   }
