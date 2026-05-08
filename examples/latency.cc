@@ -155,8 +155,6 @@ int main(int argc, char *argv[]) {
 
   auto io_service = cppcoro::io_service(1);
   auto scheduler = std::make_shared<rdmapp::basic_scheduler>();
-  std::jthread w([&]() { io_service.process_events(); });
-  std::jthread s([=]() { scheduler->run(); });
 
   examples::payload_size_args args;
   try {
@@ -167,8 +165,16 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  spdlog::info("payload size: {} bytes, count: {}, threads: {}",
-               args.payload_size, args.count, args.threads);
+  std::jthread w([&]() { io_service.process_events(); });
+  std::vector<std::jthread> scheduler_threads;
+  scheduler_threads.reserve(args.scheduler_threads);
+  for (std::size_t i = 0; i < args.scheduler_threads; ++i) {
+    scheduler_threads.emplace_back([=]() { scheduler->run(); });
+  }
+
+  spdlog::info(
+      "payload size: {} bytes, count: {}, threads: {}, scheduler threads: {}",
+      args.payload_size, args.count, args.threads, args.scheduler_threads);
 
   switch (args.positional.size()) {
   case 1: {

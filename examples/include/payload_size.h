@@ -13,6 +13,7 @@ struct payload_size_args {
   std::size_t payload_size;
   std::size_t count;
   std::size_t threads;
+  std::size_t scheduler_threads;
   std::size_t recv_depth;
   std::vector<std::string_view> positional;
 };
@@ -71,6 +72,10 @@ inline std::size_t parse_threads(std::string_view value) {
   return parse_size_value(value, "threads");
 }
 
+inline std::size_t parse_scheduler_threads(std::string_view value) {
+  return parse_size_value(value, "scheduler threads");
+}
+
 inline std::size_t parse_recv_depth(std::string_view value) {
   return parse_size_value(value, "recv depth");
 }
@@ -79,9 +84,10 @@ inline payload_size_args parse_payload_size_args(int argc, char *argv[],
                                                  std::size_t default_size,
                                                  std::size_t default_count,
                                                  std::size_t default_threads = 1,
+                                                 std::size_t default_scheduler_threads = 1,
                                                  std::size_t default_recv_depth = 0) {
   payload_size_args result{default_size, default_count, default_threads,
-                           default_recv_depth, {}};
+                           default_scheduler_threads, default_recv_depth, {}};
   result.positional.reserve(argc > 0 ? static_cast<std::size_t>(argc - 1) : 0);
 
   for (int i = 1; i < argc; ++i) {
@@ -119,6 +125,16 @@ inline payload_size_args parse_payload_size_args(int argc, char *argv[],
       continue;
     }
 
+    constexpr std::string_view kSchedulerThreadsOption = "--scheduler-threads";
+
+    if (arg == kSchedulerThreadsOption) {
+      if (i + 1 >= argc) {
+        throw std::invalid_argument("missing value after " + std::string(arg));
+      }
+      result.scheduler_threads = parse_scheduler_threads(argv[++i]);
+      continue;
+    }
+
     constexpr std::string_view kRecvDepthOption = "--recv-depth";
 
     if (arg == kRecvDepthOption) {
@@ -148,6 +164,14 @@ inline payload_size_args parse_payload_size_args(int argc, char *argv[],
       continue;
     }
 
+    constexpr std::string_view kSchedulerThreadsOptionWithEquals =
+        "--scheduler-threads=";
+    if (arg.starts_with(kSchedulerThreadsOptionWithEquals)) {
+      result.scheduler_threads = parse_scheduler_threads(
+          arg.substr(kSchedulerThreadsOptionWithEquals.size()));
+      continue;
+    }
+
     constexpr std::string_view kRecvDepthOptionWithEquals = "--recv-depth=";
     if (arg.starts_with(kRecvDepthOptionWithEquals)) {
       result.recv_depth =
@@ -163,7 +187,7 @@ inline payload_size_args parse_payload_size_args(int argc, char *argv[],
 
 inline std::string payload_size_usage() {
   return " [--payload-size <bytes|K|M|G>] [--count <n|K|M|G>]"
-         " [--threads <n>] [--recv-depth <n>]";
+         " [--threads <n>] [--scheduler-threads <n>] [--recv-depth <n>]";
 }
 
 } // namespace examples
