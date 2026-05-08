@@ -159,3 +159,29 @@ per-QP average in that run.
 | 16 | 4 | 6.487 us | 5.383..9.188 us | 6.839 us | 5.586..9.612 us |
 | 24 | 6 | 12.836 us | 9.063..20.480 us | 12.389 us | 9.714..15.653 us |
 | 32 | 8 | 36.357 us | 23.686..60.491 us | 33.953 us | 20.871..53.000 us |
+
+## 1.5 KiB Latency Process Scaling
+
+Date: 2026-05-08
+
+- Commit tested: `293bc37c1765abdc0251382d335d87eb2c75c939`
+- Payload: 1536 bytes
+- Process definition: one independent `latency` process. Each process uses `--threads 1 --scheduler-threads 1`.
+- Count per process: 100000
+- NUMA binding: both client and server processes used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server processes, local host `192.168.98.70` ran the client processes.
+
+The values below are server-side averages. For each process count, the average
+is computed across all per-process averages; the range shows the minimum and
+maximum per-process average in that run.
+
+| Processes | Threads per process | Count per process | write_with_imm/recv avg latency | write range | send/recv avg latency | send range |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 100000 | 3.565 us | 3.565..3.565 us | 3.935 us | 3.935..3.935 us |
+| 2 | 1 | 100000 | 3.595 us | 3.590..3.600 us | 4.613 us | 4.549..4.677 us |
+| 4 | 1 | 100000 | 3.966 us | 3.853..4.086 us | 4.370 us | 4.115..4.642 us |
+| 8 | 1 | 100000 | 4.710 us | 4.495..5.222 us | 5.321 us | 5.023..5.678 us |
+| 12 | 1 | 100000 | 6.184 us | 5.088..7.689 us | 6.100 us | 4.993..7.520 us |
+| 16 | 1 | 100000 | 9.226 us | 5.923..16.173 us | 9.752 us | 8.683..10.954 us |
+| 24 | 1 | 100000 | 31.719 us | 9.718..58.720 us | 18.129 us | 9.267..30.312 us |
+| 32 | 1 | 100000 | 104.177 us | 49.501..200.366 us | 53.216 us | 26.705..105.053 us |
