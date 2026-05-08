@@ -132,3 +132,30 @@ average of per-thread send completion averages.
 | 16 | 4 | 3750 | 9 | 5830.70 ops/s | 195.64 Gbps | 2713.157 us |
 | 24 | 6 | 2500 | 9 | 5816.29 ops/s | 195.16 Gbps | 3934.840 us |
 | 32 | 8 | 1875 | 10 | 5677.38 ops/s | 190.50 Gbps | 5481.768 us |
+
+## 1.5 KiB Latency Thread Scaling
+
+Date: 2026-05-08
+
+- Commit tested: `766e4eef3c25cc3435c4337a233ae9480362fe8d`
+- Payload: 1536 bytes
+- Thread definition: one independent QP / benchmark stream. CQ poller scheduler threads are reported separately and are not counted as benchmark threads.
+- Scheduler policy: `scheduler_threads = ceil(threads / 4)`, keeping at least one scheduler per four benchmark streams.
+- Count per thread: 100000
+- NUMA binding: both client and server used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server, local host `192.168.98.70` ran the client.
+
+The values below are server-side averages. For each thread count, the average is
+computed across all per-QP averages; the range shows the minimum and maximum
+per-QP average in that run.
+
+| Threads | Scheduler threads | write_with_imm/recv avg latency | write range | send/recv avg latency | send range |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 7.112 us | 7.112..7.112 us | 7.170 us | 7.170..7.170 us |
+| 2 | 1 | 4.649 us | 4.359..4.939 us | 4.614 us | 4.501..4.728 us |
+| 4 | 1 | 5.913 us | 5.196..6.757 us | 7.187 us | 6.174..8.069 us |
+| 8 | 2 | 7.698 us | 6.750..8.644 us | 8.064 us | 6.875..8.774 us |
+| 12 | 3 | 5.978 us | 4.569..8.367 us | 5.402 us | 4.812..5.908 us |
+| 16 | 4 | 6.487 us | 5.383..9.188 us | 6.839 us | 5.586..9.612 us |
+| 24 | 6 | 12.836 us | 9.063..20.480 us | 12.389 us | 9.714..15.653 us |
+| 32 | 8 | 36.357 us | 23.686..60.491 us | 33.953 us | 20.871..53.000 us |
