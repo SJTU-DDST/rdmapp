@@ -247,3 +247,39 @@ completion.
 | 16 | 4 | 100000 | 10.004 us | 8.006..11.661 us | 9.821 us | 8.385..11.017 us | 3.669 us | 3.524..3.992 us |
 | 24 | 6 | 100000 | 17.089 us | 13.689..22.348 us | 16.862 us | 15.026..19.992 us | 4.377 us | 3.626..6.355 us |
 | 32 | 8 | 100000 | 37.450 us | 17.771..62.610 us | 30.660 us | 20.574..42.945 us | 5.926 us | 4.039..8.287 us |
+
+## 4 MiB Read Bandwidth Thread Scaling
+
+Date: 2026-05-08
+
+- Commit tested: `0a885dfbb109a82e466fb0758be5daf05f8a983a`
+- Payload: 4 MiB
+- Thread definition: one independent QP / benchmark stream.
+- Scheduler policy: `scheduler_threads = ceil(threads / 4)`, keeping at least one scheduler per four benchmark streams.
+- Count per thread: 3000
+- NUMA binding: both client and server used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server, local host `192.168.98.70` ran the client.
+- Tool: `read_bw`, which only performs one-sided RDMA read after exchanging the server memory region.
+- Device: both sides used `rdmapp::device(1, 1)`.
+
+The aggregate bandwidth is the sum of per-thread client-side read bandwidths.
+The worker range shows the minimum and maximum per-thread bandwidth in that run.
+
+| Threads | Scheduler threads | Count per thread | Aggregate read bandwidth | Worker bandwidth range |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 3000 | 190.074 Gbps | 190.074..190.074 Gbps |
+| 2 | 1 | 3000 | 196.206 Gbps | 98.092..98.115 Gbps |
+| 3 | 1 | 3000 | 196.342 Gbps | 65.390..65.480 Gbps |
+| 4 | 1 | 3000 | 196.453 Gbps | 49.062..49.215 Gbps |
+| 5 | 2 | 3000 | 196.327 Gbps | 39.234..39.313 Gbps |
+| 6 | 2 | 3000 | 196.364 Gbps | 32.694..32.836 Gbps |
+| 7 | 2 | 3000 | 196.571 Gbps | 28.045..28.197 Gbps |
+| 8 | 2 | 3000 | 196.648 Gbps | 24.545..24.704 Gbps |
+| 9 | 3 | 3000 | 196.709 Gbps | 21.824..21.981 Gbps |
+| 10 | 3 | 3000 | 196.761 Gbps | 19.644..19.807 Gbps |
+| 11 | 3 | 3000 | 196.539 Gbps | 17.845..17.935 Gbps |
+| 12 | 3 | 3000 | 196.741 Gbps | 16.367..16.509 Gbps |
+| 13 | 4 | 3000 | 196.687 Gbps | 15.106..15.242 Gbps |
+| 14 | 4 | 3000 | 196.713 Gbps | 14.029..14.161 Gbps |
+| 15 | 4 | 3000 | 196.687 Gbps | 13.092..13.215 Gbps |
+| 16 | 4 | 3000 | 196.650 Gbps | 12.272..12.389 Gbps |
