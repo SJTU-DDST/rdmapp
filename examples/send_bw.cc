@@ -166,11 +166,13 @@ cppcoro::task<void> server(rdmapp::native_qp_acceptor &acceptor,
                            std::size_t recv_depth) {
   cppcoro::async_scope scope;
   std::jthread reporter(reporter_loop, "server");
+  std::vector<std::shared_ptr<Server>> servers;
 
   while (true) {
     spdlog::info("server waiting for connection...");
     auto qp = co_await acceptor.accept();
     auto server = std::make_shared<Server>(qp, payload_size, recv_depth);
+    servers.push_back(server);
     scope.spawn(server->run());
   }
 
