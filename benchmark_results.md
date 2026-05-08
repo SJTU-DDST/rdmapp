@@ -88,13 +88,13 @@ Client-side per-worker average send completion latency:
 
 Date: 2026-05-08
 
-- Commit tested: `7e3cae14f64cc4d7b2f37e0a891635c1690b5bff`
+- Commit tested: `f07370ed3dc0891600aff4ef2ba0076784415c1b`
 - Payload: 4 MiB
-- Thread definition: one independent QP / benchmark stream.
-- CQ poller implementation threads are not counted as benchmark threads.
+- Thread definition: one independent QP / benchmark stream. CQ poller scheduler threads are reported separately and are not counted as benchmark threads.
+- Scheduler policy: `scheduler_threads = ceil(threads / 4)`, keeping at least one scheduler per four benchmark streams.
 - NUMA binding: both client and server used `numactl -N 0 -m 0`.
 - Direction: remote host `192.168.98.74` ran the server, local host `192.168.98.70` ran the client.
-- `send_bw` uses depth per thread = 1 and `--recv-depth 2`.
+- `send_bw` uses send depth per benchmark thread = 1 and `--recv-depth 2`.
 
 ### latency
 
@@ -102,31 +102,33 @@ Each latency thread is one independent QP and runs serially with outstanding
 depth 1. The values below are averages across all per-QP server-side averages
 for that thread count.
 
-| Threads | Count per thread | write_with_imm/recv avg latency | send/recv avg latency |
-| ---: | ---: | ---: | ---: |
-| 1 | 200 | 291.480 us | 302.800 us |
-| 2 | 200 | 556.322 us | 576.435 us |
-| 4 | 200 | 1114.279 us | 1128.260 us |
-| 8 | 200 | 2220.921 us | 2236.857 us |
-| 12 | 200 | 3344.876 us | 3360.640 us |
-| 16 | 200 | 4481.733 us | 4494.088 us |
-| 24 | 200 | 6557.357 us | 6618.957 us |
-| 32 | 200 | 8668.262 us | 8887.869 us |
+| Threads | Scheduler threads | Count per thread | write_with_imm/recv avg latency | send/recv avg latency |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 200 | 291.840 us | 303.465 us |
+| 2 | 1 | 200 | 560.337 us | 576.942 us |
+| 4 | 1 | 200 | 1113.475 us | 1131.636 us |
+| 8 | 2 | 200 | 2227.097 us | 2233.059 us |
+| 12 | 3 | 200 | 3342.562 us | 3346.392 us |
+| 16 | 4 | 200 | 4471.629 us | 4479.440 us |
+| 24 | 6 | 200 | 6550.684 us | 6478.793 us |
+| 32 | 8 | 200 | 8693.676 us | 8555.000 us |
 
 ### send_bw
 
-The bandwidth table uses the server-side reporter output. Zero startup windows
-and the final partial window after the client finished were excluded where
-there was more than one non-zero sample. The client latency column is the
+The bandwidth table uses the server-side reporter output. To keep the one-second
+reporter from undercounting short runs, this sweep used approximately 60000
+total sends per thread count: `count_per_thread = 60000 / threads`. Startup/ramp
+windows and final partial windows were excluded; in this run the stable plateau
+windows are the samples at or above 5500 ops/s. The client latency column is the
 average of per-thread send completion averages.
 
-| Threads | Count per thread | Stable samples | Avg IOPS | Avg bandwidth | Client avg send completion |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 3000 | 1 | 2999.29 ops/s | 100.64 Gbps | 190.858 us |
-| 2 | 3000 | 1 | 4581.95 ops/s | 153.74 Gbps | 342.260 us |
-| 4 | 3000 | 2 | 5176.03 ops/s | 173.68 Gbps | 682.634 us |
-| 8 | 3000 | 4 | 5477.61 ops/s | 183.79 Gbps | 1365.769 us |
-| 12 | 3000 | 6 | 5575.17 ops/s | 187.07 Gbps | 2048.107 us |
-| 16 | 3000 | 8 | 5622.05 ops/s | 188.65 Gbps | 2730.604 us |
-| 24 | 3000 | 13 | 5531.05 ops/s | 185.59 Gbps | 4000.119 us |
-| 32 | 3000 | 17 | 5513.80 ops/s | 185.01 Gbps | 5572.524 us |
+| Threads | Scheduler threads | Count per thread | Stable samples | Avg IOPS | Avg bandwidth | Client avg send completion |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 60000 | 9 | 5621.28 ops/s | 188.62 Gbps | 177.908 us |
+| 2 | 1 | 30000 | 9 | 5831.23 ops/s | 195.66 Gbps | 342.908 us |
+| 4 | 1 | 15000 | 9 | 5830.89 ops/s | 195.65 Gbps | 685.394 us |
+| 8 | 2 | 7500 | 9 | 5825.35 ops/s | 195.47 Gbps | 1370.880 us |
+| 12 | 3 | 5000 | 9 | 5830.06 ops/s | 195.62 Gbps | 2041.949 us |
+| 16 | 4 | 3750 | 9 | 5830.70 ops/s | 195.64 Gbps | 2713.157 us |
+| 24 | 6 | 2500 | 9 | 5816.29 ops/s | 195.16 Gbps | 3934.840 us |
+| 32 | 8 | 1875 | 10 | 5677.38 ops/s | 190.50 Gbps | 5481.768 us |
