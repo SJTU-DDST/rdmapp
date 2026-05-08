@@ -83,3 +83,50 @@ Client-side per-worker average send completion latency:
 | 64 KiB | 500000 | 12.135 us | 12.135 us | 12.135 us | 12.135 us |
 | 1 MiB | 20000 | 173.515 us | 173.498 us | 173.481 us | 173.462 us |
 | 2 MiB | 10000 | 347.532 us | 347.438 us | 347.332 us | 347.218 us |
+
+## 4 MiB Thread Scaling
+
+Date: 2026-05-08
+
+- Commit tested: `7e3cae14f64cc4d7b2f37e0a891635c1690b5bff`
+- Payload: 4 MiB
+- Thread definition: one independent QP / benchmark stream.
+- CQ poller implementation threads are not counted as benchmark threads.
+- NUMA binding: both client and server used `numactl -N 0 -m 0`.
+- Direction: remote host `192.168.98.74` ran the server, local host `192.168.98.70` ran the client.
+- `send_bw` uses depth per thread = 1 and `--recv-depth 2`.
+
+### latency
+
+Each latency thread is one independent QP and runs serially with outstanding
+depth 1. The values below are averages across all per-QP server-side averages
+for that thread count.
+
+| Threads | Count per thread | write_with_imm/recv avg latency | send/recv avg latency |
+| ---: | ---: | ---: | ---: |
+| 1 | 200 | 291.480 us | 302.800 us |
+| 2 | 200 | 556.322 us | 576.435 us |
+| 4 | 200 | 1114.279 us | 1128.260 us |
+| 8 | 200 | 2220.921 us | 2236.857 us |
+| 12 | 200 | 3344.876 us | 3360.640 us |
+| 16 | 200 | 4481.733 us | 4494.088 us |
+| 24 | 200 | 6557.357 us | 6618.957 us |
+| 32 | 200 | 8668.262 us | 8887.869 us |
+
+### send_bw
+
+The bandwidth table uses the server-side reporter output. Zero startup windows
+and the final partial window after the client finished were excluded where
+there was more than one non-zero sample. The client latency column is the
+average of per-thread send completion averages.
+
+| Threads | Count per thread | Stable samples | Avg IOPS | Avg bandwidth | Client avg send completion |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 3000 | 1 | 2999.29 ops/s | 100.64 Gbps | 190.858 us |
+| 2 | 3000 | 1 | 4581.95 ops/s | 153.74 Gbps | 342.260 us |
+| 4 | 3000 | 2 | 5176.03 ops/s | 173.68 Gbps | 682.634 us |
+| 8 | 3000 | 4 | 5477.61 ops/s | 183.79 Gbps | 1365.769 us |
+| 12 | 3000 | 6 | 5575.17 ops/s | 187.07 Gbps | 2048.107 us |
+| 16 | 3000 | 8 | 5622.05 ops/s | 188.65 Gbps | 2730.604 us |
+| 24 | 3000 | 13 | 5531.05 ops/s | 185.59 Gbps | 4000.119 us |
+| 32 | 3000 | 17 | 5513.80 ops/s | 185.01 Gbps | 5572.524 us |
