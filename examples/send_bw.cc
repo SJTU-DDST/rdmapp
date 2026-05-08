@@ -9,6 +9,7 @@
 #include <cppcoro/sync_wait.hpp>
 #include <cppcoro/task.hpp>
 #include <cppcoro/when_all.hpp>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -138,12 +139,20 @@ cppcoro::task<void> send_worker(int idx, std::shared_ptr<rdmapp::qp> qp,
 cppcoro::task<void> client(auto &connector, std::string_view hostname,
                            uint16_t port, std::size_t payload_size,
                            std::size_t count, std::size_t threads) {
+  std::vector<std::shared_ptr<rdmapp::qp>> qps;
+  qps.reserve(threads);
+
+  for (std::size_t i = 0; i < threads; i++) {
+    qps.emplace_back(co_await connector.connect(hostname, port));
+  }
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
   std::vector<cppcoro::task<void>> tasks;
   tasks.reserve(threads);
 
   for (std::size_t i = 0; i < threads; i++) {
-    auto qp = co_await connector.connect(hostname, port);
-    tasks.emplace_back(send_worker(static_cast<int>(i), qp, payload_size,
+    tasks.emplace_back(send_worker(static_cast<int>(i), qps[i], payload_size,
                                    count));
   }
 
@@ -175,8 +184,7 @@ int main(int argc, char *argv[]) {
 #else
   rdmapp::log::setup(rdmapp::log::level::info);
 #endif
-  // NOTE: to use first card, use (0,1) but not (1,1) here
-  auto device = std::make_shared<rdmapp::device>(1, 1);
+  auto device = std::make_shared<rdmapp::device>(0, 1);
   auto pd = std::make_shared<rdmapp::pd>(device);
 
   auto io_service = cppcoro::io_service(1);
