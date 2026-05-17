@@ -9,6 +9,12 @@
 
 namespace rdmapp {
 
+struct auto_select_t {
+  explicit auto_select_t() = default;
+};
+
+inline constexpr auto_select_t auto_select{};
+
 /**
  * @brief This class holds a list of devices available on the system.
  *
@@ -91,6 +97,8 @@ public:
    * @param port_num The port number of the target device.
    */
   device(uint16_t device_num = 0, uint16_t port_num = 1);
+
+  device(auto_select_t, uint16_t port_num = 0);
 
   /**
    * @brief Get the device port number.

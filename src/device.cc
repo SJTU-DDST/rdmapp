@@ -4,6 +4,7 @@
 #include "rdmapp/error.h"
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace rdmapp {
@@ -31,6 +33,15 @@ struct gid_candidate {
   bool zero = true;
   bool link_local = false;
   bool legacy = false;
+};
+
+struct auto_device_candidate {
+  uint16_t device_num = 0;
+  struct ibv_device *device = nullptr;
+  std::string name;
+  uint16_t port_num = 0;
+  struct ibv_port_attr port_attr = {};
+  uint32_t rate_mbps = 0;
 };
 
 static constexpr bool is_zero_gid(union ibv_gid const &gid) noexcept {
@@ -77,6 +88,50 @@ std::string device_name(struct ibv_device *device) {
     return name;
   }
   return "unknown";
+}
+
+uint32_t width_multiplier(uint8_t active_width) {
+  switch (active_width) {
+  case 1:
+    return 1;
+  case 16:
+    return 2;
+  case 2:
+    return 4;
+  case 4:
+    return 8;
+  case 8:
+    return 12;
+  }
+  return 0;
+}
+
+uint32_t speed_mbps_per_lane(uint32_t active_speed) {
+  switch (active_speed) {
+  case 1:
+    return 2500;
+  case 2:
+    return 5000;
+  case 4:
+  case 8:
+    return 10000;
+  case 16:
+    return 14000;
+  case 32:
+    return 25000;
+  case 64:
+    return 50000;
+  case 128:
+    return 100000;
+  case 256:
+    return 200000;
+  }
+  return 0;
+}
+
+uint32_t port_rate_mbps(struct ibv_port_attr const &port_attr) {
+  return width_multiplier(port_attr.active_width) *
+         speed_mbps_per_lane(port_attr.active_speed);
 }
 
 } // namespace
@@ -222,7 +277,7 @@ void device::select_gid() {
       }
     }
 
-    if (candidate.ok) {
+    if (candidate.ok && !candidate.zero) {
       log::debug("gid table entry device={} port={} index={} gid={} type={} "
                  "ifindex={} zero={} link_local={} source={}",
                  device_name(device_), port_num_, index,
@@ -241,13 +296,12 @@ void device::select_gid() {
   }
 
   gid_candidate const *selected = nullptr;
-  auto select_by_priority = [&](int priority) {
+  auto select_by_priority = [&](int priority, bool allow_link_local) {
     for (auto const &candidate : candidates) {
       if (!candidate.ok || candidate.zero) {
         continue;
       }
-      if (port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET &&
-          candidate.link_local) {
+      if (!allow_link_local && candidate.link_local) {
         continue;
       }
       if (is_preferred_gid_type(port_attr_.link_layer, candidate.gid_type,
@@ -260,15 +314,17 @@ void device::select_gid() {
   };
 
   if (port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET) {
-    if (!select_by_priority(0) && !select_by_priority(1)) {
-      select_by_priority(2);
+    if (!select_by_priority(0, false) && !select_by_priority(1, false) &&
+        !select_by_priority(2, false)) {
+      select_by_priority(0, true) || select_by_priority(1, true) ||
+          select_by_priority(2, true);
     }
   } else if (port_attr_.link_layer == IBV_LINK_LAYER_INFINIBAND) {
-    if (!select_by_priority(0)) {
-      select_by_priority(1);
+    if (!select_by_priority(0, true)) {
+      select_by_priority(1, true);
     }
   } else {
-    select_by_priority(0);
+    select_by_priority(0, true);
   }
 
   if (selected != nullptr) {
@@ -298,11 +354,12 @@ void device::select_gid() {
     }
   }
 
-  auto const roce_hint = port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET
-                             ? "; RoCE requires a non-link-local GID, so "
-                               "configure an IP address on the RoCE netdev and "
-                               "verify show_gids exposes an IP-based RoCE GID"
-                             : "";
+  auto const roce_hint =
+      port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET
+          ? "; RoCE requires a non-zero GID. Configure an IP address on the "
+            "RoCE netdev for routable RoCEv2, or ensure link-local GIDs are "
+            "usable on this fabric"
+          : "";
   throw_with("failed to select gid for device=%s port=%u link_layer=%s lid=%u "
              "active_mtu=%s gid_tbl_len=%d entries:%s%s",
              device_name(device_).c_str(), port_num_,
@@ -371,6 +428,116 @@ device::device(uint16_t device_num, uint16_t port_num)
   log::info("selected device by index device_num={} device_name={} port={}",
             device_num, device_name(target), port_num);
   open_device(target, port_num);
+}
+
+device::device(auto_select_t, uint16_t requested_port_num)
+    : device_(nullptr), port_num_(0) {
+  device_list_ = std::make_unique<device_list>();
+  std::vector<auto_device_candidate> candidates;
+
+  for (size_t device_num = 0; device_num < device_list_->size(); ++device_num) {
+    auto *candidate_device = device_list_->at(device_num);
+    auto const candidate_name = device_name(candidate_device);
+    auto *ctx = ::ibv_open_device(candidate_device);
+    if (ctx == nullptr) {
+      log::warn("failed to probe device for auto selection device_num={} "
+                "device_name={}: {}",
+                device_num, candidate_name, ::strerror(errno));
+      continue;
+    }
+
+    struct ibv_device_attr_ex device_attr_ex = {};
+    struct ibv_query_device_ex_input query = {};
+    auto const query_rc = ::ibv_query_device_ex(ctx, &query, &device_attr_ex);
+    if (query_rc != 0) {
+      log::warn("failed to query device for auto selection device_num={} "
+                "device_name={}: {} (rc={})",
+                device_num, candidate_name, ::strerror(query_rc), query_rc);
+      ::ibv_close_device(ctx);
+      continue;
+    }
+
+    auto const port_count = device_attr_ex.orig_attr.phys_port_cnt;
+    auto const first_port =
+        requested_port_num == 0 ? uint16_t{1} : requested_port_num;
+    auto const last_port =
+        requested_port_num == 0 ? port_count : requested_port_num;
+    for (uint16_t port = first_port; port <= last_port; ++port) {
+      struct ibv_port_attr port_attr = {};
+      auto const port_rc = ::ibv_query_port(ctx, port, &port_attr);
+      if (port_rc != 0) {
+        log::warn("failed to query port for auto selection device_num={} "
+                  "device_name={} port={}: {} (rc={})",
+                  device_num, candidate_name, port, ::strerror(port_rc),
+                  port_rc);
+        continue;
+      }
+
+      auto const rate_mbps = port_rate_mbps(port_attr);
+      log::debug(
+          "auto RDMA probe device_num={} device_name={} port={} state={} "
+          "link_layer={} active_mtu={} max_mtu={} active_width={} "
+          "active_speed={} rate_mbps={}",
+          device_num, candidate_name, port,
+          ::ibv_port_state_str(port_attr.state),
+          link_layer_string(port_attr.link_layer),
+          mtu_string(port_attr.active_mtu), mtu_string(port_attr.max_mtu),
+          port_attr.active_width, port_attr.active_speed, rate_mbps);
+
+      if (port_attr.state != IBV_PORT_ACTIVE) {
+        continue;
+      }
+
+      candidates.push_back(auto_device_candidate{
+          static_cast<uint16_t>(device_num), candidate_device, candidate_name,
+          port, port_attr, rate_mbps});
+    }
+
+    ::ibv_close_device(ctx);
+  }
+
+  if (candidates.empty()) {
+    throw_with("failed to auto-select RDMA device: no active RDMA ports found");
+  }
+
+  std::stable_sort(
+      candidates.begin(), candidates.end(),
+      [](auto_device_candidate const &lhs, auto_device_candidate const &rhs) {
+        return lhs.rate_mbps > rhs.rate_mbps;
+      });
+
+  std::ostringstream failures;
+  for (auto const &candidate : candidates) {
+    log::debug("auto RDMA candidate device_num={} device_name={} port={} "
+               "rate_mbps={} link_layer={} active_mtu={} max_mtu={}",
+               candidate.device_num, candidate.name, candidate.port_num,
+               candidate.rate_mbps,
+               link_layer_string(candidate.port_attr.link_layer),
+               mtu_string(candidate.port_attr.active_mtu),
+               mtu_string(candidate.port_attr.max_mtu));
+    try {
+      open_device(candidate.device, candidate.port_num);
+      log::info("auto-selected RDMA device device_num={} device_name={} "
+                "port={} rate_mbps={}",
+                candidate.device_num, candidate.name, candidate.port_num,
+                candidate.rate_mbps);
+      return;
+    } catch (std::exception const &e) {
+      log::warn("skipping auto RDMA candidate device_num={} device_name={} "
+                "port={} rate_mbps={} reason={}",
+                candidate.device_num, candidate.name, candidate.port_num,
+                candidate.rate_mbps, e.what());
+      failures << " device_num=" << candidate.device_num
+               << " device_name=" << candidate.name
+               << " port=" << candidate.port_num
+               << " rate_mbps=" << candidate.rate_mbps << " reason=" << e.what()
+               << ";";
+    }
+  }
+
+  throw_with("failed to auto-select RDMA device: no active candidate could be "
+             "opened with a usable GID;%s",
+             failures.str().c_str());
 }
 
 uint16_t device::port_num() const { return port_num_; }

@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
 #else
   rdmapp::log::setup(rdmapp::log::level::info);
 #endif
-  auto device = std::make_shared<rdmapp::device>(0, 1);
+  auto device = std::make_shared<rdmapp::device>(rdmapp::auto_select);
   auto pd = std::make_shared<rdmapp::pd>(device);
 
   auto io_service = cppcoro::io_service(1);

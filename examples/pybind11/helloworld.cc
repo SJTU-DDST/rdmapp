@@ -24,7 +24,7 @@ public:
       : io_service_(1),
         scheduler_(std::make_shared<rdmapp::basic_scheduler>()) {
     rdmapp::log::setup(rdmapp::log::level::debug);
-    device_ = std::make_shared<rdmapp::device>(0, 1);
+    device_ = std::make_shared<rdmapp::device>(rdmapp::auto_select);
     pd_ = std::make_shared<rdmapp::pd>(device_);
     t_io_ = std::jthread([&]() { io_service_.process_events(); });
     t_sched_ = std::jthread([this]() { scheduler_->run(); });
