@@ -29,6 +29,7 @@ struct gid_candidate {
   int error = 0;
   bool ok = false;
   bool zero = true;
+  bool link_local = false;
   bool legacy = false;
 };
 
@@ -39,6 +40,10 @@ static constexpr bool is_zero_gid(union ibv_gid const &gid) noexcept {
     }
   }
   return true;
+}
+
+static constexpr bool is_link_local_gid(union ibv_gid const &gid) noexcept {
+  return gid.raw[0] == 0xfe && (gid.raw[1] & 0xc0) == 0x80;
 }
 
 static constexpr bool is_preferred_gid_type(uint8_t link_layer,
@@ -199,6 +204,7 @@ void device::select_gid() {
       candidate.ifindex = entry.ndev_ifindex;
       candidate.ok = true;
       candidate.zero = is_zero_gid(candidate.gid);
+      candidate.link_local = is_link_local_gid(candidate.gid);
     } else {
       candidate.error = candidate.rc;
       auto const legacy_rc =
@@ -208,6 +214,7 @@ void device::select_gid() {
         candidate.gid_type = kUnknownGidType;
         candidate.ok = true;
         candidate.zero = is_zero_gid(candidate.gid);
+        candidate.link_local = is_link_local_gid(candidate.gid);
         candidate.legacy = true;
       } else {
         candidate.rc = legacy_rc;
@@ -217,11 +224,12 @@ void device::select_gid() {
 
     if (candidate.ok) {
       log::debug("gid table entry device={} port={} index={} gid={} type={} "
-                 "ifindex={} zero={} source={}",
+                 "ifindex={} zero={} link_local={} source={}",
                  device_name(device_), port_num_, index,
                  gid_hex_string(candidate.gid),
                  gid_type_string(candidate.gid_type), candidate.ifindex,
                  candidate.zero ? "true" : "false",
+                 candidate.link_local ? "true" : "false",
                  candidate.legacy ? "ibv_query_gid" : "ibv_query_gid_ex");
     } else {
       log::warn("failed to query gid table entry device={} port={} index={}: "
@@ -236,6 +244,10 @@ void device::select_gid() {
   auto select_by_priority = [&](int priority) {
     for (auto const &candidate : candidates) {
       if (!candidate.ok || candidate.zero) {
+        continue;
+      }
+      if (port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET &&
+          candidate.link_local) {
         continue;
       }
       if (is_preferred_gid_type(port_attr_.link_layer, candidate.gid_type,
@@ -276,7 +288,9 @@ void device::select_gid() {
       summary << " index=" << candidate.index
               << " gid=" << gid_hex_string(candidate.gid)
               << " type=" << gid_type_string(candidate.gid_type)
-              << " zero=" << (candidate.zero ? "true" : "false") << ";";
+              << " zero=" << (candidate.zero ? "true" : "false")
+              << " link_local=" << (candidate.link_local ? "true" : "false")
+              << ";";
     } else {
       summary << " index=" << candidate.index
               << " query_failed=" << ::strerror(candidate.error)
@@ -284,12 +298,17 @@ void device::select_gid() {
     }
   }
 
+  auto const roce_hint = port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET
+                             ? "; RoCE requires a non-link-local GID, so "
+                               "configure an IP address on the RoCE netdev and "
+                               "verify show_gids exposes an IP-based RoCE GID"
+                             : "";
   throw_with("failed to select gid for device=%s port=%u link_layer=%s lid=%u "
-             "active_mtu=%s gid_tbl_len=%d entries:%s",
+             "active_mtu=%s gid_tbl_len=%d entries:%s%s",
              device_name(device_).c_str(), port_num_,
              link_layer_string(port_attr_.link_layer).c_str(), port_attr_.lid,
              mtu_string(port_attr_.active_mtu).c_str(), port_attr_.gid_tbl_len,
-             summary.str().c_str());
+             summary.str().c_str(), roce_hint);
 }
 
 void device::open_device(struct ibv_device *target, uint16_t port_num) {
@@ -348,7 +367,10 @@ device::device(uint16_t device_num, uint16_t port_num)
                device_num, device_list_->size());
     throw std::invalid_argument(buffer);
   }
-  open_device(device_list_->at(device_num), port_num);
+  auto *target = device_list_->at(device_num);
+  log::info("selected device by index device_num={} device_name={} port={}",
+            device_num, device_name(target), port_num);
+  open_device(target, port_num);
 }
 
 uint16_t device::port_num() const { return port_num_; }
