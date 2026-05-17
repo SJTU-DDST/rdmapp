@@ -1,13 +1,11 @@
 #pragma once
 
+#include "rdmapp/detail/noncopyable.h"
 #include <cstdint>
+#include <infiniband/verbs.h>
 #include <iterator>
 #include <memory>
 #include <string>
-
-#include <infiniband/verbs.h>
-
-#include "rdmapp/detail/noncopyable.h"
 
 namespace rdmapp {
 
@@ -57,6 +55,7 @@ class device : public noncopyable {
   struct ibv_port_attr port_attr_;
   struct ibv_device_attr_ex device_attr_ex_;
   union ibv_gid gid_;
+  uint32_t gid_type_;
 
   int gid_index_;
   uint16_t port_num_;
@@ -65,6 +64,7 @@ class device : public noncopyable {
   friend class basic_qp;
   friend class srq;
   void open_device(struct ibv_device *target, uint16_t port_num);
+  void select_gid();
   std::unique_ptr<device_list> device_list_;
 
 public:
@@ -130,6 +130,22 @@ public:
   bool is_compare_and_swap_supported() const;
 
   int gid_index() const;
+
+  uint32_t gid_type() const;
+
+  enum ibv_mtu active_mtu() const;
+
+  enum ibv_mtu max_mtu() const;
+
+  uint32_t active_mtu_bytes() const;
+
+  static uint32_t mtu_bytes(enum ibv_mtu mtu);
+
+  static std::string mtu_string(enum ibv_mtu mtu);
+
+  static std::string link_layer_string(uint8_t link_layer);
+
+  static std::string gid_type_string(uint32_t gid_type);
 
   static std::string gid_hex_string(union ibv_gid const &gid);
 

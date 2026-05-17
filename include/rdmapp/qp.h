@@ -52,7 +52,7 @@ struct deserialized_qp {
      * @brief The total size of the serialized header in bytes.
      */
     static constexpr size_t kSerializedSize =
-        sizeof(uint16_t) + 3 * sizeof(uint32_t) + sizeof(union ibv_gid);
+        sizeof(uint16_t) + 4 * sizeof(uint32_t) + sizeof(union ibv_gid);
     /// The Local Identifier (LID) of the remote port.
     uint16_t lid;
     /// The Queue Pair Number (QPN) of the remote QP.
@@ -61,6 +61,8 @@ struct deserialized_qp {
     uint32_t sq_psn;
     /// The size of the user-defined data that follows the header.
     uint32_t user_data_size;
+    /// The active MTU enum value of the remote port.
+    uint32_t active_mtu;
     /// The Global Identifier (GID) of the remote port.
     union ibv_gid gid;
   } header;
@@ -77,6 +79,7 @@ struct deserialized_qp {
     detail::deserialize(it, des_qp.header.qp_num);
     detail::deserialize(it, des_qp.header.sq_psn);
     detail::deserialize(it, des_qp.header.user_data_size);
+    detail::deserialize(it, des_qp.header.active_mtu);
     detail::deserialize(it, des_qp.header.gid);
     return des_qp;
   }
@@ -355,7 +358,8 @@ public:
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
            std::shared_ptr<srq> srq = nullptr,
-           qp_config config = default_qp_config());
+           qp_config config = default_qp_config(),
+           enum ibv_mtu remote_active_mtu = IBV_MTU_4096);
   /**
    * @brief Constructs a new QP and connects it to a remote peer with separate
    * CQs. The QP will be in the Ready-To-Send (RTS) state upon construction.
@@ -375,7 +379,8 @@ public:
            const uint32_t remote_psn, const union ibv_gid remote_gid,
            std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
            std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq = nullptr,
-           qp_config config = default_qp_config());
+           qp_config config = default_qp_config(),
+           enum ibv_mtu remote_active_mtu = IBV_MTU_4096);
   /**
    * @brief Constructs a new QP in the INIT state.
    *        The QP is not connected and must be manually transitioned to RTR and
@@ -792,7 +797,8 @@ public:
    * @param remote_gid The GID of the remote QP's port.
    */
   void rtr(uint16_t remote_lid, uint32_t remote_qpn, uint32_t remote_psn,
-           union ibv_gid remote_gid);
+           union ibv_gid remote_gid,
+           enum ibv_mtu remote_active_mtu = IBV_MTU_4096);
 
   /**
    * @brief Transitions the Queue Pair from RTR to Ready-To-Send (RTS) state.

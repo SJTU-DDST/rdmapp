@@ -23,22 +23,49 @@
 
 namespace rdmapp {
 
+namespace {
+
+bool is_valid_mtu(enum ibv_mtu mtu) {
+  switch (mtu) {
+  case IBV_MTU_256:
+  case IBV_MTU_512:
+  case IBV_MTU_1024:
+  case IBV_MTU_2048:
+  case IBV_MTU_4096:
+    return true;
+  }
+  return false;
+}
+
+enum ibv_mtu choose_path_mtu(enum ibv_mtu local_mtu, enum ibv_mtu remote_mtu) {
+  if (!is_valid_mtu(local_mtu) || !is_valid_mtu(remote_mtu)) {
+    throw_with("invalid qp mtu local=%d remote=%d", static_cast<int>(local_mtu),
+               static_cast<int>(remote_mtu));
+  }
+  return static_cast<int>(local_mtu) < static_cast<int>(remote_mtu)
+             ? local_mtu
+             : remote_mtu;
+}
+
+} // namespace
+
 std::atomic<uint32_t> basic_qp::next_sq_psn = 1;
 
 basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
                    uint32_t remote_psn, union ibv_gid remote_gid,
                    std::shared_ptr<pd> pd, std::shared_ptr<cq> cq,
-                   std::shared_ptr<srq> srq, qp_config config)
+                   std::shared_ptr<srq> srq, qp_config config,
+                   enum ibv_mtu remote_active_mtu)
     : basic_qp(remote_lid, remote_qpn, remote_psn, remote_gid, pd, cq, cq, srq,
-               config) {}
+               config, remote_active_mtu) {}
 
 basic_qp::basic_qp(uint16_t remote_lid, uint32_t remote_qpn,
                    uint32_t remote_psn, union ibv_gid remote_gid,
                    std::shared_ptr<pd> pd, std::shared_ptr<cq> recv_cq,
                    std::shared_ptr<cq> send_cq, std::shared_ptr<srq> srq,
-                   qp_config config)
+                   qp_config config, enum ibv_mtu remote_active_mtu)
     : basic_qp(pd, recv_cq, send_cq, srq, config) {
-  rtr(remote_lid, remote_qpn, remote_psn, remote_gid);
+  rtr(remote_lid, remote_qpn, remote_psn, remote_gid, remote_active_mtu);
   rts();
 }
 
@@ -66,6 +93,7 @@ std::vector<std::byte> basic_qp::serialize() const {
   detail::serialize(qp_->qp_num, it);
   detail::serialize(sq_psn_, it);
   detail::serialize(static_cast<uint32_t>(user_data_.size()), it);
+  detail::serialize(static_cast<uint32_t>(pd_->device_ptr()->active_mtu()), it);
   detail::serialize(pd_->device_ptr()->gid(), it);
   std::copy(user_data_.cbegin(), user_data_.cend(), it);
   return buffer;
@@ -120,23 +148,39 @@ void basic_qp::init() {
 }
 
 void basic_qp::rtr(uint16_t remote_lid, uint32_t remote_qpn,
-                   uint32_t remote_psn, union ibv_gid remote_gid) {
+                   uint32_t remote_psn, union ibv_gid remote_gid,
+                   enum ibv_mtu remote_active_mtu) {
+  auto const local_active_mtu = pd_->device_ptr()->active_mtu();
+  auto const path_mtu = choose_path_mtu(local_active_mtu, remote_active_mtu);
+
   struct ibv_qp_attr qp_attr = {};
   ::bzero(&qp_attr, sizeof(qp_attr));
   qp_attr.qp_state = IBV_QPS_RTR;
-  qp_attr.path_mtu = IBV_MTU_4096;
+  qp_attr.path_mtu = path_mtu;
   qp_attr.dest_qp_num = remote_qpn;
   qp_attr.rq_psn = remote_psn;
   qp_attr.max_dest_rd_atomic = 16;
   qp_attr.min_rnr_timer = 12;
   qp_attr.ah_attr.is_global = 1;
   qp_attr.ah_attr.grh.dgid = remote_gid;
-  qp_attr.ah_attr.grh.sgid_index = pd_->device_->gid_index_;
+  qp_attr.ah_attr.grh.sgid_index = pd_->device_ptr()->gid_index();
   qp_attr.ah_attr.grh.hop_limit = 16;
   qp_attr.ah_attr.dlid = remote_lid;
   qp_attr.ah_attr.sl = 0;
   qp_attr.ah_attr.src_path_bits = 0;
   qp_attr.ah_attr.port_num = pd_->device_ptr()->port_num();
+
+  auto const local_gid = pd_->device_ptr()->gid();
+  log::debug(
+      "transition qp to rtr qpn={} remote_lid={} remote_qpn={} remote_psn={} "
+      "remote_gid={} local_gid={} local_gid_index={} local_gid_type={} "
+      "local_active_mtu={} remote_active_mtu={} path_mtu={}",
+      qp_->qp_num, remote_lid, remote_qpn, remote_psn,
+      device::gid_hex_string(remote_gid), device::gid_hex_string(local_gid),
+      pd_->device_ptr()->gid_index(),
+      device::gid_type_string(pd_->device_ptr()->gid_type()),
+      device::mtu_string(local_active_mtu),
+      device::mtu_string(remote_active_mtu), device::mtu_string(path_mtu));
 
   try {
     check_rc(::ibv_modify_qp(qp_, &qp_attr,
@@ -147,6 +191,17 @@ void basic_qp::rtr(uint16_t remote_lid, uint32_t remote_qpn,
              "failed to transition qp to rtr state");
   } catch (const std::exception &e) {
     log::error("{}", e.what());
+    log::error(
+        "rtr diagnostic: if this is RoCE, check selected gid_index={} gid={} "
+        "gid_type={}, remote_gid={}, local_active_mtu={}, "
+        "remote_active_mtu={}, path_mtu={}; common causes are a wrong GID "
+        "entry, inactive or mismatched netdev/IP, RoCE v1/v2 mismatch, or path "
+        "MTU above the active Ethernet MTU",
+        pd_->device_ptr()->gid_index(), device::gid_hex_string(local_gid),
+        device::gid_type_string(pd_->device_ptr()->gid_type()),
+        device::gid_hex_string(remote_gid),
+        device::mtu_string(local_active_mtu),
+        device::mtu_string(remote_active_mtu), device::mtu_string(path_mtu));
     qp_ = nullptr;
     destroy();
     throw;

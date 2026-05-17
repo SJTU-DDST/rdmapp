@@ -53,10 +53,11 @@ auto recv_qp(cppcoro::net::socket &socket)
   auto remote_qp = rdmapp::deserialized_qp::deserialize(header_buffer.data());
   auto const remote_gid_str =
       rdmapp::device::gid_hex_string(remote_qp.header.gid);
-  spdlog::debug("received header gid={} lid={} qpn={} psn={} user_data_size={}",
+  spdlog::debug("received header gid={} lid={} qpn={} psn={} active_mtu={} "
+                "user_data_size={}",
                 remote_gid_str.c_str(), remote_qp.header.lid,
                 remote_qp.header.qp_num, remote_qp.header.sq_psn,
-                remote_qp.header.user_data_size);
+                remote_qp.header.active_mtu, remote_qp.header.user_data_size);
 
   remote_qp.user_data.resize(remote_qp.header.user_data_size);
   if (remote_qp.header.user_data_size > 0) {

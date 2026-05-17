@@ -49,7 +49,9 @@ auto basic_qp_acceptor<cq_poller_t>::accept_qp(
   auto remote_qp = co_await recv_qp(socket);
   auto local_qp = std::make_shared<rdmapp::qp>(
       remote_qp.header.lid, remote_qp.header.qp_num, remote_qp.header.sq_psn,
-      remote_qp.header.gid, pd_, recv_cq, send_cq, srq_, config_.queue_pair_config);
+      remote_qp.header.gid, pd_, recv_cq, send_cq, srq_,
+      config_.queue_pair_config,
+      static_cast<enum ibv_mtu>(remote_qp.header.active_mtu));
   local_qp->user_data() = std::move(remote_qp.user_data);
   co_await send_qp(*local_qp, socket);
   co_return local_qp;

@@ -42,7 +42,8 @@ auto basic_qp_connector<cq_poller_t>::from_socket(
   auto remote_qp = co_await recv_qp(socket);
 
   qp_ptr->rtr(remote_qp.header.lid, remote_qp.header.qp_num,
-              remote_qp.header.sq_psn, remote_qp.header.gid);
+              remote_qp.header.sq_psn, remote_qp.header.gid,
+              static_cast<enum ibv_mtu>(remote_qp.header.active_mtu));
   spdlog::trace("qp: rtr");
   qp_ptr->user_data() = std::move(remote_qp.user_data);
   spdlog::trace("qp: user_data: size={}", qp_ptr->user_data().size());
