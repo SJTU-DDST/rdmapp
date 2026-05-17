@@ -13,7 +13,7 @@ using namespace log;
 cq::cq(std::shared_ptr<device> device, size_t nr_cqe) : device_(device) {
   cq_ = ::ibv_create_cq(device->ctx_, nr_cqe, this, nullptr, 0);
   check_ptr(cq_, "failed to create cq");
-  log::trace("created cq: {}", fmt::ptr(cq_));
+  LOGT("created cq: {}", fmt::ptr(cq_));
 }
 
 bool cq::poll(struct ibv_wc &wc) {
@@ -39,7 +39,7 @@ cq::~cq() {
   if (auto rc = ::ibv_destroy_cq(cq_); rc != 0) [[unlikely]] {
     log::error("failed to destroy cq {}: {}", fmt::ptr(cq_), strerror(errno));
   } else {
-    log::trace("destroyed cq: {}", fmt::ptr(cq_));
+    LOGT("destroyed cq: {}", fmt::ptr(cq_));
   }
 }
 

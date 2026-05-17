@@ -30,7 +30,7 @@ local_mr::~mr() {
     log::error("failed to dereg mr {} addr={}", log::fmt::ptr(mr_),
                log::fmt::ptr(addr));
   } else {
-    log::trace("dereg mr {} addr={}", log::fmt::ptr(mr_), log::fmt::ptr(addr));
+    LOGT("dereg mr {} addr={}", log::fmt::ptr(mr_), log::fmt::ptr(addr));
   }
 }
 

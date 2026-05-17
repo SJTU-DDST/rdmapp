@@ -74,9 +74,9 @@ private:
            Args &&...args) {
     if (level >= level_.load(std::memory_order_relaxed)) {
       std::string s =
-          std::format("[rdmapp] [{}] {}\n", level_str,
+          std::format("[rdmapp] [{}] {}", level_str,
                       std::format(fmt, std::forward<Args>(args)...));
-      std::printf("%s", s.c_str());
+      std::fprintf(stderr, "%s\n", s.c_str());
     }
   }
 
@@ -127,3 +127,10 @@ void critical(std::format_string<Args...> fmt, Args &&...args) {
 }
 
 } // namespace rdmapp::log
+
+#ifdef RDMAPP_BUILD_DEBUG
+#define LOGT(fmt, ...) rdmapp::log::trace(fmt, ##__VA_ARGS__)
+#else
+// no operation
+#define LOGT(fmt, ...) (void)0
+#endif

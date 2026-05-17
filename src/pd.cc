@@ -1,21 +1,18 @@
 #include "rdmapp/pd.h"
 
-#include <cstring>
-#include <memory>
-
-#include <infiniband/verbs.h>
-
+#include "rdmapp/detail/logger.h"
 #include "rdmapp/device.h"
 #include "rdmapp/error.h"
-
-#include "rdmapp/detail/logger.h"
+#include <cstring>
+#include <infiniband/verbs.h>
+#include <memory>
 
 namespace rdmapp {
 
 pd::pd(std::shared_ptr<rdmapp::device> device) : device_(device) {
   pd_ = ::ibv_alloc_pd(device->ctx_);
   check_ptr(pd_, "failed to alloc pd");
-  log::trace("alloc pd {}", log::fmt::ptr(pd_));
+  LOGT("alloc pd {}", log::fmt::ptr(pd_));
 }
 
 std::shared_ptr<device> pd::device_ptr() const { return device_; }
@@ -31,9 +28,10 @@ pd::~pd() {
     return;
   }
   if (auto rc = ::ibv_dealloc_pd(pd_); rc != 0) [[unlikely]] {
-    log::error("failed to dealloc pd {}: {}", log::fmt::ptr(pd_), strerror(errno));
+    log::error("failed to dealloc pd {}: {}", log::fmt::ptr(pd_),
+               strerror(errno));
   } else {
-    log::trace("dealloc pd {}", log::fmt::ptr(pd_));
+    LOGT("dealloc pd {}", log::fmt::ptr(pd_));
   }
 }
 

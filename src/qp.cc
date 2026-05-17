@@ -122,8 +122,8 @@ void basic_qp::create() {
   qp_ = ::ibv_create_qp(pd_->pd_, &qp_init_attr);
   check_ptr(qp_, "failed to create qp");
   sq_psn_ = next_sq_psn.fetch_add(1);
-  log::trace("created qp {} lid={} qpn={} psn={}", log::fmt::ptr(qp_),
-             pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
+  LOGT("created qp {} lid={} qpn={} psn={}", log::fmt::ptr(qp_),
+       pd_->device_ptr()->lid(), qp_->qp_num, sq_psn_);
 }
 
 void basic_qp::init() {
@@ -234,8 +234,8 @@ void basic_qp::rts() {
 
 void basic_qp::post_send(struct ibv_send_wr const &send_wr,
                          struct ibv_send_wr *&bad_send_wr) {
-  log::trace("post send wr_id={:#x} addr={:#x}", send_wr.wr_id,
-             send_wr.sg_list->addr);
+  LOGT("post send wr_id={:#x} addr={:#x} op={}", send_wr.wr_id,
+       send_wr.sg_list ? send_wr.sg_list->addr : 0x0, (int)send_wr.opcode);
   check_rc(::ibv_post_send(qp_, const_cast<struct ibv_send_wr *>(&send_wr),
                            &bad_send_wr),
            "failed to post send");
@@ -248,11 +248,9 @@ void basic_qp::post_recv(struct ibv_recv_wr const &recv_wr,
 
 void basic_qp::post_recv_rq(struct ibv_recv_wr const &recv_wr,
                             struct ibv_recv_wr *&bad_recv_wr) const {
-#ifdef RDMAPP_BUILD_DEBUG
-  log::trace("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
-             log::fmt::ptr(recv_wr.sg_list),
-             recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
-#endif
+  LOGT("post recv wr_id={:#x} sg_list={} addr={:#x}", recv_wr.wr_id,
+       log::fmt::ptr(recv_wr.sg_list),
+       recv_wr.sg_list ? recv_wr.sg_list->addr : 0x0);
   check_rc(::ibv_post_recv(qp_, const_cast<struct ibv_recv_wr *>(&recv_wr),
                            &bad_recv_wr),
            "failed to post recv");
@@ -359,6 +357,16 @@ basic_qp::operation_state::operation_state() noexcept
 
 basic_qp::operation_state::operation_state(enum ibv_wr_opcode opcode) noexcept
     : wr_opcode(opcode) {}
+
+basic_qp::operation_state::operation_state(operation_state &&other) noexcept
+    : wr_opcode(other.wr_opcode), coro_handle(other.coro_handle),
+      wc_status(other.wc_status), wc_flags(other.wc_flags),
+      imm_data(other.imm_data), byte_len(other.byte_len) {
+#ifdef RDMAPP_BUILD_DEBUG
+  magic1 = other.magic1;
+  magic2 = other.magic2;
+#endif
+}
 
 uintptr_t basic_qp::operation_state::wr_id() const noexcept {
   return reinterpret_cast<uintptr_t>(this);
@@ -532,12 +540,11 @@ bool basic_qp::recv_awaitable::await_suspend(
 basic_qp::recv_result basic_qp::recv_awaitable::resume() const {
   check_wc_status(state_.wc_status, "failed to recv");
   if (state_.wc_flags & IBV_WC_WITH_IMM) {
-#ifdef RDMAPP_BUILD_DEBUG
-    log::trace("recv resume: imm: wr_id={:#x} imm={}", state_.wr_id(),
-               state_.imm_data);
-#endif
+    LOGT("recv resume[imm] wr_id={:#x} byte_len={} imm={}", state_.wr_id(),
+         state_.byte_len, state_.imm_data);
     return std::make_pair(state_.byte_len, state_.imm_data);
   }
+  LOGT("recv resume: wr_id={:#x} byte_len={}", state_.wr_id(), state_.byte_len);
   return std::make_pair(state_.byte_len, std::nullopt);
 }
 
@@ -557,7 +564,7 @@ void basic_qp::destroy() {
     log::error("failed to destroy qp {}: {}", log::fmt::ptr(qp_),
                strerror(errno));
   } else {
-    log::trace("destroyed qp {}", log::fmt::ptr(qp_));
+    LOGT("destroyed qp {}", log::fmt::ptr(qp_));
   }
 }
 
@@ -569,7 +576,7 @@ void basic_qp::err() {
     log::error("failed to modify qp({}) to ERROR, error: {}\n",
                log::fmt::ptr(qp_), strerror(errno));
   } else {
-    log::trace("qp({}) set to ERORR", log::fmt::ptr(qp_));
+    LOGT("qp({}) set to ERORR", log::fmt::ptr(qp_));
   }
 }
 

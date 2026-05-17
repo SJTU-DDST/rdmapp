@@ -1,8 +1,7 @@
-#include <spdlog/spdlog.h>
-
 #include "qp_connector.h"
 
 #include "qp_transmission.h"
+#include "rdmapp/detail/logger.h"
 #include "rdmapp/scheduler.h"
 #include <cppcoro/net/ipv4_address.hpp>
 #include <cppcoro/net/ipv4_endpoint.hpp>
@@ -44,11 +43,11 @@ auto basic_qp_connector<cq_poller_t>::from_socket(
   qp_ptr->rtr(remote_qp.header.lid, remote_qp.header.qp_num,
               remote_qp.header.sq_psn, remote_qp.header.gid,
               static_cast<enum ibv_mtu>(remote_qp.header.active_mtu));
-  spdlog::trace("qp: rtr");
+  LOGT("qp: rtr");
   qp_ptr->user_data() = std::move(remote_qp.user_data);
-  spdlog::trace("qp: user_data: size={}", qp_ptr->user_data().size());
+  LOGT("qp: user_data: size={}", qp_ptr->user_data().size());
   qp_ptr->rts();
-  spdlog::trace("qp: rts");
+  LOGT("qp: rts");
   co_return qp_ptr;
 }
 
@@ -65,9 +64,9 @@ auto basic_qp_connector<cq_poller_t>::connect(
   cppcoro::net::socket socket = cppcoro::net::socket::create_tcpv4(io_service_);
   co_await socket.connect(cppcoro::net::ipv4_endpoint(*addr, port));
 
-  spdlog::info("connector: tcp connected to: {}:{}", hostname, port);
+  log::info("connector: tcp connected to: {}:{}", hostname, port);
   auto qp = co_await from_socket(socket, userdata);
-  spdlog::info("connector: created qp from tcp connection");
+  log::info("connector: created qp from tcp connection");
   co_return qp;
 }
 

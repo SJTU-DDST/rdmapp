@@ -13,7 +13,7 @@
 #include <rdmapp/rdmapp.h>
 
 int main(int argc, char *argv[]) {
-  rdmapp::log::setup(rdmapp::log::level::debug);
+  rdmapp::log::setup(rdmapp::log::level::trace);
   auto device = std::make_shared<rdmapp::device>(rdmapp::auto_select);
   auto pd = std::make_shared<rdmapp::pd>(device);
 

@@ -16,9 +16,8 @@ namespace rdmapp {
 class cq_poller {
   std::vector<struct ibv_wc> wc_vec_;
   std::shared_ptr<cq> cq_;
-
-  std::jthread poller_thread_;
   std::shared_ptr<scheduler> scheduler_;
+  std::jthread poller_thread_;
   void worker(std::stop_token token);
 
 public:

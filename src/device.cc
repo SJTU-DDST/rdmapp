@@ -277,15 +277,18 @@ void device::select_gid() {
       }
     }
 
-    if (candidate.ok && !candidate.zero) {
-      log::debug("gid table entry device={} port={} index={} gid={} type={} "
-                 "ifindex={} zero={} link_local={} source={}",
-                 device_name(device_), port_num_, index,
-                 gid_hex_string(candidate.gid),
-                 gid_type_string(candidate.gid_type), candidate.ifindex,
-                 candidate.zero ? "true" : "false",
-                 candidate.link_local ? "true" : "false",
-                 candidate.legacy ? "ibv_query_gid" : "ibv_query_gid_ex");
+    if (candidate.ok) {
+      if (!candidate.zero)
+        log::debug("gid table entry device={} port={} index={} gid={} type={} "
+                   "ifindex={} zero={} link_local={} source={}",
+                   device_name(device_), port_num_, index,
+                   gid_hex_string(candidate.gid),
+                   gid_type_string(candidate.gid_type), candidate.ifindex,
+                   candidate.zero ? "true" : "false",
+                   candidate.link_local ? "true" : "false",
+                   candidate.legacy ? "ibv_query_gid" : "ibv_query_gid_ex");
+    } else if (candidate.error == ENODATA) {
+      continue;
     } else {
       log::warn("failed to query gid table entry device={} port={} index={}: "
                 "{} (rc={} errno={})",
@@ -339,6 +342,8 @@ void device::select_gid() {
 
   std::ostringstream summary;
   for (auto const &candidate : candidates) {
+    if (candidate.zero)
+      continue;
     if (candidate.ok) {
       summary << " index=" << candidate.index
               << " gid=" << gid_hex_string(candidate.gid)

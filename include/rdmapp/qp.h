@@ -156,8 +156,13 @@ class basic_qp : public noncopyable,
 
 public:
   struct operation_state {
+
     operation_state() noexcept;
     operation_state(enum ibv_wr_opcode opcode) noexcept;
+    operation_state(operation_state &&other) noexcept;
+    operation_state(operation_state const &) = delete;
+    operation_state &operator=(operation_state &&) = delete;
+    operation_state &operator=(operation_state const &) = delete;
 #ifdef RDMAPP_BUILD_DEBUG
     static constexpr uint32_t kMagic1 = 0x190514;
     static constexpr uint32_t kMagic2 = 0xABCABC;
