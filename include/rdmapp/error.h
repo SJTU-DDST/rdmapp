@@ -1,30 +1,27 @@
 #pragma once
-#include <cstdio>
 #include <cerrno>
-#include <cstddef>
 #include <cstring>
+#include <format>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 #include <infiniband/verbs.h>
 
 namespace rdmapp {
 
-constexpr size_t kErrorStringBufferSize = 1024;
-
-static inline void throw_with(const char *message) {
+static inline void throw_with(std::string const &message) {
   throw std::runtime_error(message);
 }
 
 template <class... Args>
-static inline void throw_with(const char *format, Args... args) {
-  char buffer[kErrorStringBufferSize];
-  ::snprintf(buffer, sizeof(buffer), format, args...);
-  throw std::runtime_error(buffer);
+static inline void throw_with(std::format_string<Args...> format, Args &&...args) {
+  throw std::runtime_error(std::format(format, std::forward<Args>(args)...));
 }
 
 static inline void check_rc(int rc, const char *message) {
   if (rc != 0) [[unlikely]] {
-    throw_with("%s: %s (rc=%d)", message, ::strerror(rc), rc);
+    throw_with("{}: {} (rc={})", message, ::strerror(rc), rc);
   }
 }
 
@@ -84,18 +81,18 @@ static inline void check_wc_status(enum ibv_wc_status status,
       }
       return "UNKNOWN_ERROR";
     }();
-    throw_with("%s: %s (status=%d)", message, errorstr, status);
+    throw_with("{}: {} (status={})", message, errorstr, static_cast<int>(status));
   }
 }
 static inline void check_ptr(void *ptr, const char *message) {
   if (ptr == nullptr) [[unlikely]] {
-    throw_with("%s: %s (errno=%d)", message, ::strerror(errno), errno);
+    throw_with("{}: {} (errno={})", message, ::strerror(errno), errno);
   }
 }
 
 static inline void check_errno(int rc, const char *message) {
   if (rc < 0) [[unlikely]] {
-    throw_with("%s: %s (errno=%d)", message, ::strerror(errno), errno);
+    throw_with("{}: {} (errno={})", message, ::strerror(errno), errno);
   }
 }
 

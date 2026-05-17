@@ -39,7 +39,7 @@ bool is_valid_mtu(enum ibv_mtu mtu) {
 
 enum ibv_mtu choose_path_mtu(enum ibv_mtu local_mtu, enum ibv_mtu remote_mtu) {
   if (!is_valid_mtu(local_mtu) || !is_valid_mtu(remote_mtu)) {
-    throw_with("invalid qp mtu local=%d remote=%d", static_cast<int>(local_mtu),
+    throw_with("invalid qp mtu local={} remote={}", static_cast<int>(local_mtu),
                static_cast<int>(remote_mtu));
   }
   return static_cast<int>(local_mtu) < static_cast<int>(remote_mtu)

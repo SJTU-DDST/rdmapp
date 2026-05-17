@@ -56,7 +56,7 @@ public:
   template <class It> size_t poll(It wc, int count) {
     int rc = ::ibv_poll_cq(cq_, count, wc);
     if (rc < 0) {
-      throw_with("failed to poll cq: %s (rc=%d)", strerror(rc), rc);
+      throw_with("failed to poll cq: {} (rc={})", strerror(rc), rc);
     }
     return rc;
   }

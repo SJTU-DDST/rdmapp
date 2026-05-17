@@ -6,8 +6,8 @@
 #include <cassert>
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
+#include <format>
 #include <infiniband/verbs.h>
 #include <limits>
 #include <memory>
@@ -296,12 +296,13 @@ void device::select_gid() {
   }
 
   gid_candidate const *selected = nullptr;
-  auto select_by_priority = [&](int priority, bool allow_link_local) {
+  auto select_by_priority = [&](int priority) {
     for (auto const &candidate : candidates) {
       if (!candidate.ok || candidate.zero) {
         continue;
       }
-      if (!allow_link_local && candidate.link_local) {
+      if (port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET &&
+          candidate.link_local) {
         continue;
       }
       if (is_preferred_gid_type(port_attr_.link_layer, candidate.gid_type,
@@ -314,17 +315,15 @@ void device::select_gid() {
   };
 
   if (port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET) {
-    if (!select_by_priority(0, false) && !select_by_priority(1, false) &&
-        !select_by_priority(2, false)) {
-      select_by_priority(0, true) || select_by_priority(1, true) ||
-          select_by_priority(2, true);
+    if (!select_by_priority(0) && !select_by_priority(1)) {
+      select_by_priority(2);
     }
   } else if (port_attr_.link_layer == IBV_LINK_LAYER_INFINIBAND) {
-    if (!select_by_priority(0, true)) {
-      select_by_priority(1, true);
+    if (!select_by_priority(0)) {
+      select_by_priority(1);
     }
   } else {
-    select_by_priority(0, true);
+    select_by_priority(0);
   }
 
   if (selected != nullptr) {
@@ -356,16 +355,15 @@ void device::select_gid() {
 
   auto const roce_hint =
       port_attr_.link_layer == IBV_LINK_LAYER_ETHERNET
-          ? "; RoCE requires a non-zero GID. Configure an IP address on the "
-            "RoCE netdev for routable RoCEv2, or ensure link-local GIDs are "
-            "usable on this fabric"
+          ? "; RoCE requires a non-link-local GID. Configure an IP address on "
+            "the RoCE netdev and verify show_gids exposes an IP-based RoCE GID"
           : "";
-  throw_with("failed to select gid for device=%s port=%u link_layer=%s lid=%u "
-             "active_mtu=%s gid_tbl_len=%d entries:%s%s",
-             device_name(device_).c_str(), port_num_,
-             link_layer_string(port_attr_.link_layer).c_str(), port_attr_.lid,
-             mtu_string(port_attr_.active_mtu).c_str(), port_attr_.gid_tbl_len,
-             summary.str().c_str(), roce_hint);
+  throw_with("failed to select gid for device={} port={} link_layer={} lid={} "
+             "active_mtu={} gid_tbl_len={} entries:{}{}",
+             device_name(device_), port_num_,
+             link_layer_string(port_attr_.link_layer), port_attr_.lid,
+             mtu_string(port_attr_.active_mtu), port_attr_.gid_tbl_len,
+             summary.str(), roce_hint);
 }
 
 void device::open_device(struct ibv_device *target, uint16_t port_num) {
@@ -411,18 +409,16 @@ device::device(std::string const &device_name, uint16_t port_num)
       return;
     }
   }
-  throw_with("no device named %s found", device_name.c_str());
+  throw_with("no device named {} found", device_name);
 }
 
 device::device(uint16_t device_num, uint16_t port_num)
     : device_(nullptr), port_num_(0) {
   device_list_ = std::make_unique<device_list>();
   if (device_num >= device_list_->size()) {
-    char buffer[kErrorStringBufferSize] = {0};
-    ::snprintf(buffer, sizeof(buffer),
-               "requested device number %d out of range, %lu devices available",
-               device_num, device_list_->size());
-    throw std::invalid_argument(buffer);
+    throw std::invalid_argument(std::format(
+        "requested device number {} out of range, {} devices available",
+        device_num, device_list_->size()));
   }
   auto *target = device_list_->at(device_num);
   log::info("selected device by index device_num={} device_name={} port={}",
@@ -536,8 +532,8 @@ device::device(auto_select_t, uint16_t requested_port_num)
   }
 
   throw_with("failed to auto-select RDMA device: no active candidate could be "
-             "opened with a usable GID;%s",
-             failures.str().c_str());
+             "opened with a usable GID;{}",
+             failures.str());
 }
 
 uint16_t device::port_num() const { return port_num_; }
@@ -570,11 +566,10 @@ uint32_t device::gid_type() const { return gid_type_; }
 
 std::string device::gid_hex_string(union ibv_gid const &gid) {
   std::string gid_str;
-  char buf[16] = {0};
   const static size_t kGidLength = 16;
   for (size_t i = 0; i < kGidLength; ++i) {
-    ::snprintf(buf, 16, "%02x", gid.raw[i]);
-    gid_str += i == 0 ? buf : std::string(":") + buf;
+    auto const byte = std::format("{:02x}", gid.raw[i]);
+    gid_str += i == 0 ? byte : std::string(":") + byte;
   }
 
   return gid_str;
